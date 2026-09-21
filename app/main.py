@@ -37,27 +37,35 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+import comandos
 import voz
 
 try:
-    from camara import HiloCamara, ModeloMirada, Permanencia, dispersion
+    from camara import FiltroUnEuro, HiloCamara, ModeloMirada, Permanencia, dispersion
     ERROR_CAMARA = None
 except ImportError as e:  # p. ej. Mac Intel: MediaPipe no publica paquete para esa plataforma
     HiloCamara = None
     ERROR_CAMARA = f"MediaPipe no está disponible ({e.name})"
 
-MODULOS = ["Silla", "Alexa 1", "Secadora 3"]
-# Botones que hablan: (texto del botón, frase dicha). "Alexa" va delante para activarla.
-# Los módulos que no aparecen aquí siguen con "Opción 1/2/3" sin conectar.
-FRASES = {
-    "Alexa 1": [
-        ("Encender foco 1", "Alexa, encender foco 1"),
-        ("Apagar foco 1", "Alexa, apagar foco 1"),
-        ("Alexa, ponte unas cumbias", "Alexa, ponte unas cumbias"),
-    ]
+# Géneros que se le pueden pedir a Alexa: cada botón dice "Alexa, pon música de <género>"
+GENEROS = ["cumbia", "salsa", "reguetón", "rock", "banda", "corridos", "pop", "jazz"]
+
+
+def encender_apagar(cosa: str) -> list:
+    """Una fila por unidad (1, 2, 3): [Encender <cosa> n | Apagar <cosa> n]."""
+    return [[(f"{accion} {cosa} {n}", f"Alexa, {accion.lower()} {cosa} {n}") for accion in ("Encender", "Apagar")]
+            for n in (1, 2, 3)]
+
+
+# Dispositivos de Activadores y sus acciones, como rejilla de filas de (texto del botón, frase dicha).
+# "Alexa" va delante de cada frase para activarla (ver voz.hablar).
+DISPOSITIVOS = {
+    "Focos": encender_apagar("foco"),
+    "Televisiones": encender_apagar("televisión"),
+    "Enchufes": encender_apagar("enchufe"),
+    "Alexa": [[(g.capitalize(), f"Alexa, pon música de {g}") for g in fila] for fila in (GENEROS[:4], GENEROS[4:])],
 }
-# Géneros que se pueden pedir desde un módulo: cada botón dice "Alexa, pon música de <género>"
-GENEROS = {"Alexa 1": ["cumbia", "salsa", "reguetón", "rock", "banda", "corridos", "pop", "jazz"]}
+MODULOS = list(DISPOSITIVOS)
 # Solo para desarrollo: SILLODROMO_VISTA_PREVIA=1 muestra la imagen de la cámara en Navegación.
 # Sin ella, el hilo de la cámara ni siquiera dibuja la malla ni crea la imagen (ahorra CPU).
 VISTA_PREVIA = os.environ.get("SILLODROMO_VISTA_PREVIA") == "1"
@@ -71,7 +79,6 @@ VECTORES = {"izquierda": (-1, 0), "derecha": (1, 0), "arriba": (0, -1), "abajo":
 # del borde que se pueda sin que el blanco quede cortado
 MARGEN_PUNTOS = 0.04
 ASENTAR, MUESTREO = 0.8, 1.2  # por punto: tiempo para llevar la mirada y tiempo midiendo
-SUAVIZADO = 0.25  # 0-1: cuánto sigue el puntero a cada medida nueva (bajo = estable pero lento)
 # Tras activar algo, la pantalla suele cambiar y bajo la mirada queda otro bloque: nada cuenta
 # hasta que la mirada se mueva esta distancia (fracción de la pantalla). Evita activar en cadena.
 REARME = 0.08
@@ -119,8 +126,8 @@ def bloques_visibles(contenedor: QWidget) -> list:
 
 
 def primer_bloque(contenedor: QWidget) -> QPushButton:
-    """Primer botón visible dentro del contenedor (orden de creación)."""
-    return next(b for b in contenedor.findChildren(QPushButton) if b.isVisible())
+    """Primer botón visible dentro del contenedor (orden de creación), o None si no hay."""
+    return next((b for b in contenedor.findChildren(QPushButton) if b.isVisible()), None)
 
 
 def _llenar(boton: QPushButton) -> QPushButton:
@@ -136,7 +143,9 @@ def _volver(boton: QPushButton) -> QPushButton:
     return boton
 
 
-def crear_vista(titulo: str, frases=(), generos=()) -> QWidget:
+def crear_vista(titulo: str, filas: list, nota: str = "") -> QWidget:
+    """Título y una rejilla de bloques; cada bloque dice su frase al pulsarlo. nota: texto pequeño
+    al pie (p. ej. dónde se editan los comandos personalizados)."""
     vista = QWidget()
     layout = QVBoxLayout(vista)
     layout.setContentsMargins(0, 16, 0, 16)
@@ -146,40 +155,22 @@ def crear_vista(titulo: str, frases=(), generos=()) -> QWidget:
     encabezado.setObjectName("tituloVista")
     layout.addWidget(encabezado)
 
-    for n in range(1, 4):
-        texto, frase = frases[n - 1] if frases else (f"Opción {n}", "")
-        boton = _llenar(QPushButton(texto, vista))
-        # Nombre único para lectores de pantalla: "Opción 1" se repite en cada vista
-        boton.setAccessibleName(f"{titulo}, {texto}")
-        if frase:
-            boton.clicked.connect(lambda _, f=frase: voz.hablar(f))
-        layout.addWidget(boton, 1)  # mismo factor que los demás: se reparten la altura
+    rejilla = QGridLayout()
+    rejilla.setSpacing(14)
+    for f, fila in enumerate(filas):
+        for c, (texto, frase) in enumerate(fila):
+            boton = _llenar(QPushButton(texto, vista))
+            boton.setAccessibleName(f"{titulo}, {texto}")
+            boton.clicked.connect(lambda _, fr=frase: voz.hablar(fr))
+            rejilla.addWidget(boton, f, c)
+    layout.addLayout(rejilla, 1)
 
-    if generos:
-        # Botón que despliega/oculta la lista; el texto cambia, no solo el color
-        desplegar = _llenar(QPushButton("Mostrar géneros de música", vista))
-        desplegar.setCheckable(True)
-        desplegar.setAccessibleName(f"{titulo}, mostrar u ocultar géneros de música")
-        lista = QWidget(vista)
-        rejilla = QGridLayout(lista)
-        rejilla.setContentsMargins(0, 0, 0, 0)
-        rejilla.setSpacing(10)
-        for i, genero in enumerate(generos):
-            boton = _llenar(QPushButton(genero.capitalize(), lista))
-            boton.setAccessibleName(f"{titulo}, poner música de {genero}")
-            boton.clicked.connect(lambda _, g=genero: voz.hablar(f"Alexa, pon música de {g}"))
-            rejilla.addWidget(boton, i // 4, i % 4)
-        lista.hide()
-
-        def alternar(abierta):
-            lista.setVisible(abierta)
-            desplegar.setText("Ocultar géneros de música" if abierta else "Mostrar géneros de música")
-
-        desplegar.toggled.connect(alternar)
-        layout.addWidget(desplegar, 1)
-        layout.addWidget(lista, 2)  # dos filas de géneros
-
-    if frases and not voz.DISPONIBLE:
+    if nota:
+        pie = QLabel(nota, vista)
+        pie.setObjectName("ayudaCalibracion")
+        pie.setWordWrap(True)
+        layout.addWidget(pie)
+    if not voz.DISPONIBLE:
         layout.addWidget(QLabel("Voz no disponible: instala pyttsx3", vista))
     return vista
 
@@ -363,6 +354,7 @@ class VentanaPrincipal(QMainWindow):
         self.permanencia = Permanencia() if HiloCamara is not None else None
         self.t_rasgos = time.monotonic()
         self.recorrido = deque()  # (t, x, y) recientes del puntero, para saber si la mirada está quieta
+        self.filtro = FiltroUnEuro() if HiloCamara is not None else None
         self.paso_dicho = None  # último paso de la calibración leído en voz alta
 
         # Mientras una acción está en curso (hoy: una frase de voz), no se puede usar otra
@@ -489,10 +481,25 @@ class VentanaPrincipal(QMainWindow):
         # Por fases: página 0 = elegir dispositivo; página 1 + i = acciones del dispositivo i
         self.fases = QStackedWidget()
         self.botones_dispositivo = []
+        # Los comandos personalizados son un dispositivo más, leído de comandos.json al arrancar
+        lista, aviso = comandos.cargar()
+        self.dispositivos = {**DISPOSITIVOS, "Comandos": [lista[k:k + 4] for k in range(0, len(lista), 4)]}
+        self.nota_comandos = " ".join(filter(None, [
+            aviso,
+            "Aún no hay comandos." if not lista else "",
+            f"Los comandos se editan en {comandos.RUTA} (se leen al abrir la app). "
+            "Lo que hace cada frase se configura en las Rutinas de la app de Alexa.",
+        ]))
         self.fases.addWidget(self._crear_fase_dispositivos())
-        for i, nombre in enumerate(MODULOS):
+        for i, nombre in enumerate(self.dispositivos):
             self.fases.addWidget(self._crear_fase_acciones(i, nombre))
         return self.fases
+
+    def _boton_navegacion(self, parent) -> QPushButton:
+        """Arriba a la derecha en Activadores: salto directo a Navegación."""
+        boton = _volver(QPushButton("Volver a la navegación", parent))
+        boton.clicked.connect(lambda: self._ir_a(1))
+        return boton
 
     def _crear_fase_dispositivos(self) -> QWidget:
         fase = QWidget()
@@ -503,13 +510,14 @@ class VentanaPrincipal(QMainWindow):
         fila = QHBoxLayout()
         fila.addWidget(self._boton_volver(fase))
         fila.addStretch(1)
+        fila.addWidget(self._boton_navegacion(fase))
 
         titulo = QLabel("Elige un dispositivo", fase)
         titulo.setObjectName("tituloVista")
 
         bloques = QHBoxLayout()
         bloques.setSpacing(14)
-        for i, nombre in enumerate(MODULOS):
+        for i, nombre in enumerate(self.dispositivos):
             boton = _llenar(QPushButton(nombre, fase))
             boton.setAccessibleName(f"Elegir dispositivo {i + 1}: {nombre}")
             boton.clicked.connect(lambda _, i=i: self._abrir_dispositivo(i))
@@ -537,10 +545,12 @@ class VentanaPrincipal(QMainWindow):
         fila = QHBoxLayout()
         fila.addWidget(volver)
         fila.addStretch(1)
+        fila.addWidget(self._boton_navegacion(fase))
 
-        # Desplazamiento en vez de aplastar los botones cuando la lista de géneros está abierta
+        # Desplazamiento en vez de aplastar los botones si no caben
         desplazable = QScrollArea(fase)
-        desplazable.setWidget(crear_vista(f"Módulo {i + 1}: {nombre}", FRASES.get(nombre, ()), GENEROS.get(nombre, ())))
+        nota = self.nota_comandos if nombre == "Comandos" else ""
+        desplazable.setWidget(crear_vista(nombre, self.dispositivos[nombre], nota))
         desplazable.setWidgetResizable(True)
         desplazable.setFrameShape(QFrame.NoFrame)
         desplazable.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -551,8 +561,10 @@ class VentanaPrincipal(QMainWindow):
 
     def _abrir_dispositivo(self, i: int):
         self.fases.setCurrentIndex(1 + i)
-        # La selección cae en la primera acción, no en "Volver": es lo que se va a usar
-        primer_bloque(self.fases.currentWidget().findChild(QScrollArea)).setFocus()
+        # La selección cae en la primera acción, no en "Volver": es lo que se va a usar.
+        # Sin acciones (p. ej. aún no hay comandos), en el primer bloque de la página.
+        pagina = self.fases.currentWidget()
+        (primer_bloque(pagina.findChild(QScrollArea)) or primer_bloque(pagina)).setFocus()
 
     def _volver_a_dispositivos(self, i: int):
         self.fases.setCurrentIndex(0)
@@ -710,11 +722,8 @@ class VentanaPrincipal(QMainWindow):
         self._tras_hablar(espera, lambda: self.vistas.currentIndex() == 4 and self._ir_a(0))
 
     def _mover_puntero(self, rasgos, dt: float):
-        x, y = self.modelo_mirada.predecir(rasgos)
-        if self.mirada is None:
-            self.mirada = (x, y)
-        else:  # suavizado exponencial: quita el temblor de la medida
-            self.mirada = (self.mirada[0] + SUAVIZADO * (x - self.mirada[0]), self.mirada[1] + SUAVIZADO * (y - self.mirada[1]))
+        # Filtro 1€: quita el temblor con la mirada quieta sin retrasar los saltos (camara.FiltroUnEuro)
+        self.mirada = self.filtro(self.modelo_mirada.predecir(rasgos), dt)
         punto = QPoint(int(self.mirada[0] * self.width()), int(self.mirada[1] * self.height()))
         global_ = self.mapToGlobal(punto)
         # La mirada está quieta si el puntero casi no se movió en la última VENTANA_FIJACION

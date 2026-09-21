@@ -38,7 +38,8 @@ sillodromo/
 ├── benchmark.py                # Repite las mediciones de BENCHMARK.md (macOS y Linux)
 └── app/
     ├── main.py                 # Pantalla completa: Menú, Navegación (flecha según la cabeza) y Activadores (dispositivo → acción)
-    ├── voz.py                  # Texto a voz con pyttsx3 (botones del módulo Alexa 1)
+    ├── comandos.py             # Comandos personalizados: lee y valida ~/.sillodromo/comandos.json
+    ├── voz.py                  # Texto a voz con pyttsx3 (lo que dicen los bloques y la calibración)
     ├── camara.py               # Captura de cámara + detección de rostro con MediaPipe (en un hilo aparte)
     ├── modelos/face_landmarker.task  # Modelo de MediaPipe para la detección de rostro
     ├── palette.py              # Definición matemática de colores, luminancia y ratios WCAG
@@ -154,9 +155,25 @@ Tras la calibración inicial se calibra la pantalla: aparecen, de uno en uno, 16
 - **Abrir la boca** sigue pulsando al instante el bloque seleccionado. En este modo, girar la cabeza no mueve la selección: mueve el puntero.
 - **Si la calibración de pantalla es imprecisa** (error medio > 15 % de la pantalla, `ERROR_MAXIMO`), se avisa y se usa la cruceta. `Esc` omite ambas calibraciones.
 
-Perillas: `TIEMPO_PERMANENCIA`, `GRACIA` y `RIDGE` en `app/camara.py`; `ASENTAR`, `MUESTREO`, `SUAVIZADO`, `REARME` y `ERROR_MAXIMO` en `app/main.py`.
+El puntero se suaviza con un **filtro 1€**: con la mirada quieta suaviza mucho y quita el temblor, y cuando la mirada salta casi no suaviza, así que no hay retraso.
 
-## Atajos de Teclado de Accesibilidad
+Perillas: `TIEMPO_PERMANENCIA`, `GRACIA`, `RIDGE`, `CORTE_MIN` y `BETA` (filtro 1€) en `app/camara.py`; `ASENTAR`, `MUESTREO`, `REARME` y `ERROR_MAXIMO` en `app/main.py`. Si el puntero tiembla, baja `CORTE_MIN`; si se queda atrás al mover la mirada, sube `BETA`.
+
+## Comandos personalizados
+
+En Activadores, el dispositivo **Comandos** muestra un bloque por cada comando del archivo `~/.sillodromo/comandos.json`. En Windows es `C:\Users\<usuario>\.sillodromo\comandos.json`. Lo edita quien acompaña, y la app lo lee al abrirse. Si no existe, la app lo crea con tres ejemplos:
+
+```json
+[
+  {"texto": "Buenas noches", "frase": "Alexa, buenas noches"},
+  {"texto": "Abrir persianas", "frase": "Alexa, abre las persianas"}
+]
+```
+
+- `texto` es lo que dice el bloque y `frase` es lo que se le dice a Alexa. Si la frase no empieza por "Alexa", se añade sola.
+- Lo que hace cada frase se configura en la app de Alexa como una **Rutina**, por ejemplo "buenas noches" para apagar todo. Aquí solo se dice la frase.
+- Se muestran como máximo 12 comandos (3 filas de 4). Un archivo mal escrito no impide que la app arranque: el problema se explica al pie de la página de Comandos.
+- En Docker el archivo vive dentro del contenedor y se pierde al recrearlo.
 
 | Tecla / Atajo | Acción |
 | :--- | :--- |
@@ -193,7 +210,7 @@ python3 -m venv --system-site-packages .venv
 
 ### Voz
 
-Los botones del módulo Alexa 1 dicen "Alexa", "Alexa, enciende la luz" y "Alexa, apaga la luz" con `pyttsx3`, usando una voz en español si el sistema tiene alguna. En Linux necesita `espeak-ng` (`sudo apt install espeak-ng`). En Docker el contenedor no tiene salida de audio, así que las frases no se oyen.
+En Activadores, cada bloque le dice su orden a Alexa en voz alta con `pyttsx3` ("Alexa…" y, tras 1 s, "encender foco 1"). Hay cuatro dispositivos: Focos, Televisiones y Enchufes (encender y apagar las unidades 1, 2 y 3) y Alexa (géneros de música). Se definen en `DISPOSITIVOS` (`app/main.py`). Se usa usando una voz en español si el sistema tiene alguna. En Linux necesita `espeak-ng` (`sudo apt install espeak-ng`). En Docker el contenedor no tiene salida de audio, así que las frases no se oyen.
 
 ## Desarrollo y Modificación en Vivo (Hot Reload)
 

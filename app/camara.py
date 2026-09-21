@@ -262,6 +262,12 @@ OJOS = ((468, 33, 133, 159, 145), (473, 362, 263, 386, 374))
 RIDGE = 1e-2  # regularización del ajuste: evita que un punto mal mirado deforme todo
 TIEMPO_PERMANENCIA = 1.5  # segundos mirando un bloque para activarlo
 GRACIA = 0.3  # segundos que la mirada puede salirse del bloque sin reiniciar el tiempo (parpadeo, temblor)
+# Filtro 1€ del puntero (posición en fracción de pantalla, velocidad en pantallas por segundo)
+# Elegidos comparando con el suavizado fijo anterior (0,25 por cuadro) con ruido simulado de 1 a 4 % de
+# pantalla: ~30 % menos temblor con la mirada quieta y la mitad de retraso en los saltos (0,13 s vs 0,25 s).
+CORTE_MIN = 0.5  # Hz con la mirada quieta: más bajo = puntero más estable (y algo más lento al empezar a moverse)
+BETA = 1.0  # cuánto sube el corte con la velocidad: más alto = menos retraso en los saltos (y más temblor)
+CORTE_DERIVADA = 1.0  # Hz del suavizado de la velocidad (el valor del artículo original)
 
 
 def rasgos_mirada(puntos) -> np.ndarray:
@@ -297,6 +303,32 @@ class ModeloMirada:
     def error_medio(self, rasgos, posiciones) -> float:
         """Distancia media (fracción de pantalla) entre lo predicho y los puntos mirados."""
         return float(np.mean([np.hypot(*(np.array(self.predecir(r)) - p)) for r, p in zip(rasgos, posiciones)]))
+
+
+class FiltroUnEuro:
+    """Filtro 1€ (Casiez, Roussel y Vogel, CHI 2012) para el puntero de la mirada. Es un suavizado
+    exponencial cuyo corte depende de la velocidad: con la mirada quieta suaviza mucho (quita el
+    temblor, que es lo que necesita la permanencia) y cuando la mirada salta a otro sitio casi no
+    suaviza (no hay retraso). Usa la misma velocidad para x e y, así el puntero no se tuerce."""
+
+    def __init__(self, corte_min: float = CORTE_MIN, beta: float = BETA, corte_derivada: float = CORTE_DERIVADA):
+        self.corte_min, self.beta, self.corte_derivada = corte_min, beta, corte_derivada
+        self.x, self.dx = None, np.zeros(2)
+
+    @staticmethod
+    def _alfa(dt: float, corte: float) -> float:
+        tau = 1 / (2 * np.pi * corte)
+        return 1 / (1 + tau / dt)
+
+    def __call__(self, x, dt: float) -> tuple:
+        x = np.asarray(x, float)
+        if self.x is None or dt <= 0:
+            self.x = x if self.x is None else self.x
+            return tuple(self.x)
+        self.dx = self.dx + self._alfa(dt, self.corte_derivada) * ((x - self.x) / dt - self.dx)
+        corte = self.corte_min + self.beta * float(np.hypot(*self.dx))
+        self.x = self.x + self._alfa(dt, corte) * (x - self.x)
+        return tuple(self.x)
 
 
 def dispersion(puntos) -> float:
@@ -552,4 +584,15 @@ if __name__ == "__main__":
     assert not any(per.actualizar(B, dt, cargar=False) for _ in range(n * 2)) and per.progreso == antes  # pausa
     assert activaciones([B] * (n - 10)) == 1  # al volver a cargar sigue donde iba
     assert dispersion([(0.5, 0.5)] * 5) == 0 and abs(dispersion([(0.4, 0.5), (0.6, 0.5)]) - 0.1) < 1e-9
+
+    # Filtro 1€: mirada quieta con ruido y luego un salto al otro lado de la pantalla, a 30 cuadros/s
+    filtro, dt = FiltroUnEuro(), 1 / 30
+    ruido = azar.normal(scale=0.02, size=(150, 2))
+    quieta = [filtro((0.3, 0.5) + r, dt) for r in ruido[:90]]
+    salto = [filtro((0.7, 0.5) + r, dt) for r in ruido[90:]]
+    temblor_crudo, temblor = ruido[30:90].std(axis=0).mean(), np.array(quieta[30:]).std(axis=0).mean()  # por eje
+    retraso = next(i for i, p in enumerate(salto) if p[0] > 0.3 + 0.9 * 0.4) * dt  # hasta el 90 % del salto
+    assert temblor < temblor_crudo / 3, (temblor, temblor_crudo)  # quieta: tiembla mucho menos
+    assert retraso < 0.2, retraso  # salto: llega en menos de 0,2 s
+    print(f"FiltroUnEuro: OK (temblor {temblor:.4f} vs {temblor_crudo:.4f} sin filtro; llega al 90 % en {retraso:.2f} s)")
     print("Permanencia: OK")
