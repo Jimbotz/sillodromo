@@ -299,6 +299,14 @@ class ModeloMirada:
         return float(np.mean([np.hypot(*(np.array(self.predecir(r)) - p)) for r, p in zip(rasgos, posiciones)]))
 
 
+def dispersion(puntos) -> float:
+    """Distancia máxima de los puntos a su centro: pequeña si la mirada está quieta (fijación)."""
+    if not puntos:
+        return 0.0
+    centro = np.mean(puntos, axis=0)
+    return float(np.max(np.hypot(*(np.asarray(puntos) - centro).T)))
+
+
 class Permanencia:
     """Temporizador de permanencia: activa un bloque cuando la mirada se queda en él
     TIEMPO_PERMANENCIA segundos. Salidas de menos de GRACIA no reinician el tiempo. Tras activarlo
@@ -307,8 +315,9 @@ class Permanencia:
     def __init__(self):
         self.bloque, self.tiempo, self.fuera, self.usado = None, 0.0, 0.0, False
 
-    def actualizar(self, bloque, dt: float) -> bool:
-        """bloque: el que está bajo la mirada (o None). Devuelve True cuando toca activarlo."""
+    def actualizar(self, bloque, dt: float, cargar: bool = True) -> bool:
+        """bloque: el seleccionado por la mirada (o None). cargar=False pausa el tiempo sin perder
+        lo acumulado (p. ej. mientras la mirada se mueve). Devuelve True cuando toca activarlo."""
         if bloque is not self.bloque:
             self.fuera += dt
             if self.bloque is not None and self.fuera < GRACIA:
@@ -316,7 +325,7 @@ class Permanencia:
             self.bloque, self.tiempo, self.fuera, self.usado = bloque, 0.0, 0.0, False
         else:
             self.fuera = 0.0
-        if self.bloque is None or self.usado:
+        if self.bloque is None or self.usado or not cargar:
             return False
         self.tiempo += dt
         if self.tiempo >= TIEMPO_PERMANENCIA:
@@ -345,6 +354,8 @@ class HiloCamara(QThread):
         # False: solo se calcula la dirección; no se dibuja la malla ni se crea la QImage
         self.con_imagen = con_imagen
         self.calibracion = Calibracion()  # corre al arrancar, antes de la cruceta
+        # Mientras devuelva True, la calibración no avanza (la interfaz lo usa mientras lee en voz alta)
+        self.pausa = lambda: False
         # Se abre en el hilo principal: en macOS OpenCV solo puede pedir el permiso de cámara desde ahí.
         # Se prueban los primeros índices hasta dar con una cámara que entregue imagen.
         self.cap, self.indice = None, None
@@ -416,7 +427,8 @@ class HiloCamara(QThread):
                 direccion = direccion_cabeza(cara, perfil) if cara else ""
 
                 if not listo:  # calibración: no hay gestos hasta terminarla
-                    self.calibracion.agregar(dt, medidas_cara(cara) if cara else None, mandibula)
+                    if not self.pausa():
+                        self.calibracion.agregar(dt, medidas_cara(cara) if cara else None, mandibula)
                     if self.calibracion.terminada:
                         perfil, cruceta, listo = self.calibracion.perfil(), Cruceta(), True
                         luz = "corregida con CLAHE" if curva is not None else "buena, sin corrección"
@@ -534,4 +546,10 @@ if __name__ == "__main__":
     assert activaciones([B] * (n // 2) + [None] * 5 + [B] * (n // 2 + 2)) == 1  # parpadeo corto: no reinicia
     per = Permanencia()
     assert activaciones([B] * (n // 2) + [None] * 15 + [B] * (n // 2 + 2)) == 0  # salida larga: reinicia
+    per = Permanencia()
+    activaciones([B] * 10)
+    antes = per.progreso
+    assert not any(per.actualizar(B, dt, cargar=False) for _ in range(n * 2)) and per.progreso == antes  # pausa
+    assert activaciones([B] * (n - 10)) == 1  # al volver a cargar sigue donde iba
+    assert dispersion([(0.5, 0.5)] * 5) == 0 and abs(dispersion([(0.4, 0.5), (0.6, 0.5)]) - 0.1) < 1e-9
     print("Permanencia: OK")

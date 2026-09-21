@@ -36,6 +36,7 @@ motor.runAndWait()
 _cerrojo = threading.Lock()
 _proceso = None  # parte que está sonando
 _turno = 0  # cada frase nueva invalida las partes pendientes de la anterior
+_hilo = None  # coordinador de la frase actual: vivo mientras la frase no ha terminado
 
 
 def _decir(partes, turno):
@@ -56,7 +57,7 @@ def _decir(partes, turno):
 
 def hablar(texto: str) -> bool:
     """Dice el texto sin bloquear. Corta la frase anterior si aún suena. False si no hay pyttsx3."""
-    global _turno
+    global _turno, _hilo
     if not DISPONIBLE:
         return False
     with _cerrojo:
@@ -66,5 +67,11 @@ def hablar(texto: str) -> bool:
         turno = _turno
     # "Alexa, encender foco 1" se dice como "Alexa" + pausa + "encender foco 1"
     partes = texto.split(", ", 1) if texto.startswith("Alexa, ") else [texto]
-    threading.Thread(target=_decir, args=(partes, turno), daemon=True).start()
+    _hilo = threading.Thread(target=_decir, args=(partes, turno), daemon=True)
+    _hilo.start()
     return True
+
+
+def ocupada() -> bool:
+    """True mientras la última frase no ha terminado de decirse (incluye el arranque del motor)."""
+    return _hilo is not None and _hilo.is_alive()

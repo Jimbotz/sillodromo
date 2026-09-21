@@ -518,3 +518,14 @@ QProgressBar::chunk {
     background-color: #0072B2;
     border-radius: 4px;
 }
+
+QLabel#ayudaCalibracion {
+    background-color: transparent;
+    color: #B8B9C8;
+}
+
+/* Botones de volver: en una esquina pero grandes, para apuntarlos con la mirada */
+QPushButton#volverBtn {
+    min-height: 80px;
+    min-width: 320px;
+}

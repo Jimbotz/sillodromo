@@ -132,6 +132,8 @@ Las perillas de calibración (`UMBRAL_GIRO`, `BOCA_ABIERTA`, `BOCA_CERRADA`, `CU
 
 ## Calibración inicial
 
+**Todo el texto de la calibración se lee en voz alta** para quien no ve bien la pantalla, y cada paso espera a que termine la lectura antes de empezar a medir. En la calibración de pantalla también se dice dónde está cada punto ("Punto 7 de 16: a la derecha, al centro"). Sin `pyttsx3`, la calibración funciona igual, pero en silencio.
+
 Con cámara, la app arranca calibrando (unos 25 s) antes de mostrar el menú. Cada paso muestra la instrucción en texto grande, una flecha hacia dónde girar y una barra de progreso. El tiempo de cada paso solo corre mientras la cámara ve la cara.
 
 1. **Iluminación.** Se revisa una sola vez. Si la imagen está oscura o tiene poco contraste, se calcula CLAHE una vez y su efecto se aplica después a cada cuadro como una curva fija (`cv2.LUT`), que es casi gratis. Con buena luz no se corrige nada.
@@ -145,7 +147,9 @@ Con cámara, la app arranca calibrando (unos 25 s) antes de mostrar el menú. Ca
 
 Tras la calibración inicial se calibra la pantalla: aparecen, de uno en uno, 16 blancos en el borde (5 arriba, 5 abajo y 3 en cada lado). Hay que mirar cada blanco moviendo los ojos, la cabeza o ambos, lo que haga falta. Con esas muestras se ajusta un modelo que convierte la posición de los iris y de la cabeza en un punto de la pantalla.
 
-- **Mirar un bloque lo selecciona** (se ilumina) y una barra se llena. A los 1,5 s de seguir mirándolo, se activa (`TIEMPO_PERMANENCIA`). Salirse menos de 0,3 s, por ejemplo al parpadear, no reinicia el tiempo (`GRACIA`).
+- **Se selecciona el bloque más cercano al puntero**, aunque la mirada no esté encima de ninguno. El bloque seleccionado se ilumina y una barra se llena; a los 1,5 s se activa (`TIEMPO_PERMANENCIA`). Salirse menos de 0,3 s, por ejemplo al parpadear, no reinicia el tiempo (`GRACIA`).
+- **La barra solo carga con la mirada quieta.** Si el puntero se mueve más del 5 % de la pantalla en 0,3 s (la mirada se está desviando), la carga se pausa sin perder lo acumulado (`DISPERSION_MAXIMA`, `VENTANA_FIJACION`).
+- **Una acción a la vez.** Mientras la acción anterior no termina (por ejemplo, la frase de Alexa), los bloques se atenúan, aparece el aviso "Espera a que termine la acción" y nada se puede activar, ni con la mirada, ni con la boca, ni con el teclado.
 - **No se activa en cadena:** después de activar algo, nada cuenta hasta que la mirada se mueve (`REARME`). Así, si al cambiar de pantalla queda otro bloque bajo la mirada, no se activa solo.
 - **Abrir la boca** sigue pulsando al instante el bloque seleccionado. En este modo, girar la cabeza no mueve la selección: mueve el puntero.
 - **Si la calibración de pantalla es imprecisa** (error medio > 15 % de la pantalla, `ERROR_MAXIMO`), se avisa y se usa la cruceta. `Esc` omite ambas calibraciones.
