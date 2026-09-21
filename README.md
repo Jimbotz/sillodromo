@@ -34,8 +34,10 @@ sillodromo/
 ├── docker-compose.yml          # Mapeo del socket X11, variables de entorno y recarga en caliente
 ├── requirements.txt            # Dependencias Python (PyQt5, MediaPipe)
 ├── README.md                   # Documentación y guía de despliegue multiplataforma
+├── BENCHMARK.md                # Uso de CPU, memoria, hilos y procesos; hallazgos y recomendaciones
+├── benchmark.py                # Repite las mediciones de BENCHMARK.md (macOS y Linux)
 └── app/
-    ├── main.py                 # Vistas Menú, Navegación (cámara + flecha) y Activadores (módulos y cámara)
+    ├── main.py                 # Pantalla completa: Menú, Navegación (flecha según la cabeza) y Activadores (módulos)
     ├── voz.py                  # Texto a voz con pyttsx3 (botones del módulo Alexa 1)
     ├── camara.py               # Captura de cámara + detección de rostro con MediaPipe (en un hilo aparte)
     ├── modelos/face_landmarker.task  # Modelo de MediaPipe para la detección de rostro

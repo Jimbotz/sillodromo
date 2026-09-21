@@ -15,7 +15,7 @@ Medición del 21 de septiembre de 2026, para saber qué corre hoy en Sillódromo
 | | macOS | Linux |
 |---|---|---|
 | Máquina | MacBook Air, Apple M4 (10 núcleos), 24 GB | Docker arm64 en la misma Mac |
-| Sistema | macOS 26.6.2 | Debian trixie |
+| Sistema | macOS 26.6.2 | Debian trixie: los mismos paquetes del `Dockerfile` sobre `python:3.12-slim`, usando el Python del sistema |
 | Python | 3.12.13 | 3.13.5 |
 | PyQt5 / Qt | 5.15.10 / 5.15.11 | Debian `python3-pyqt5` |
 | MediaPipe | 0.10.35 (CPU) | 1.0.1 (CPU) |
@@ -128,9 +128,9 @@ python benchmark.py --serie 60     # memoria cada 5 s durante 60 s: detecta fuga
 python benchmark.py --voz          # procesos de voz (volumen 0, frase neutra: no activa ninguna Alexa)
 ```
 
-La primera vez, `benchmark.py` descarga la foto de prueba de MediaPipe. Para Linux se usó la imagen de Docker del repo, con este repo montado en `/repo`:
+La primera vez, `benchmark.py` descarga la foto de prueba de MediaPipe. En Linux con Docker, con este repo montado en `/repo`:
 
 ```bash
 docker compose build
-docker run --rm -v "$PWD:/repo:ro" sillodromo-accessible-gui python3 /repo/benchmark.py
+docker compose run --rm -v "$PWD:/repo:ro" sillodromo-gui python3 /repo/benchmark.py
 ```
