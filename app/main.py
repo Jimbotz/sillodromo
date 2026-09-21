@@ -1,7 +1,8 @@
 """
-main.py - Sillódromo: aplicación de escritorio PyQt5 en vista partida.
-Izquierda: selector de módulos, sus opciones y el estado de los dispositivos.
-Derecha: cámara con detección de rostro (MediaPipe).
+main.py - Sillódromo: aplicación de escritorio PyQt5 a pantalla completa.
+Menú con dos vistas: Navegación (flecha según la dirección de la cabeza, detectada con la
+cámara y MediaPipe) y Activadores (módulos con sus botones y el estado de los dispositivos).
+La imagen de la cámara no se muestra al usuario final; ver VISTA_PREVIA.
 Funciona en Windows, macOS y Linux (nativo o en Docker vía X11).
 """
 
@@ -14,11 +15,13 @@ from PyQt5.QtWidgets import (
     QApplication,
     QButtonGroup,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QPushButton,
-    QSplitter,
+    QScrollArea,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -38,16 +41,27 @@ MODULOS = ["Silla", "Alexa 1", "Secadora 3"]
 # Los módulos que no aparecen aquí siguen con "Opción 1/2/3" sin conectar.
 FRASES = {
     "Alexa 1": [
-        ("Encender", "Alexa, encender"),
-        ("Apagar", "Alexa, apagar"),
+        ("Encender foco 1", "Alexa, encender foco 1"),
+        ("Apagar foco 1", "Alexa, apagar foco 1"),
         ("Alexa, ponte unas cumbias", "Alexa, ponte unas cumbias"),
     ]
 }
+# Géneros que se pueden pedir desde un módulo: cada botón dice "Alexa, pon música de <género>"
+GENEROS = {"Alexa 1": ["cumbia", "salsa", "reguetón", "rock", "banda", "corridos", "pop", "jazz"]}
+# Solo para desarrollo: SILLODROMO_VISTA_PREVIA=1 muestra la imagen de la cámara en Navegación.
+# Sin ella, el hilo de la cámara ni siquiera dibuja la malla ni crea la imagen (ahorra CPU).
+VISTA_PREVIA = os.environ.get("SILLODROMO_VISTA_PREVIA") == "1"
 # Ángulo de la flecha de navegación (0 = hacia arriba, sentido horario)
 ANGULOS = {"arriba": 0, "derecha": 90, "abajo": 180, "izquierda": 270}
 
 
-def crear_vista(titulo: str, frases=()) -> QWidget:
+def _llenar(boton: QPushButton) -> QPushButton:
+    """El botón crece para repartirse la pantalla con los demás."""
+    boton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+    return boton
+
+
+def crear_vista(titulo: str, frases=(), generos=()) -> QWidget:
     vista = QWidget()
     layout = QVBoxLayout(vista)
     layout.setContentsMargins(0, 16, 0, 16)
@@ -59,17 +73,39 @@ def crear_vista(titulo: str, frases=()) -> QWidget:
 
     for n in range(1, 4):
         texto, frase = frases[n - 1] if frases else (f"Opción {n}", "")
-        boton = QPushButton(texto, vista)
+        boton = _llenar(QPushButton(texto, vista))
         # Nombre único para lectores de pantalla: "Opción 1" se repite en cada vista
         boton.setAccessibleName(f"{titulo}, {texto}")
         if frase:
             boton.clicked.connect(lambda _, f=frase: voz.hablar(f))
-        layout.addWidget(boton)
+        layout.addWidget(boton, 1)  # mismo factor que los demás: se reparten la altura
+
+    if generos:
+        # Botón que despliega/oculta la lista; el texto cambia, no solo el color
+        desplegar = _llenar(QPushButton("Mostrar géneros de música", vista))
+        desplegar.setCheckable(True)
+        desplegar.setAccessibleName(f"{titulo}, mostrar u ocultar géneros de música")
+        lista = QWidget(vista)
+        rejilla = QGridLayout(lista)
+        rejilla.setContentsMargins(0, 0, 0, 0)
+        rejilla.setSpacing(10)
+        for i, genero in enumerate(generos):
+            boton = _llenar(QPushButton(genero.capitalize(), lista))
+            boton.setAccessibleName(f"{titulo}, poner música de {genero}")
+            boton.clicked.connect(lambda _, g=genero: voz.hablar(f"Alexa, pon música de {g}"))
+            rejilla.addWidget(boton, i // 4, i % 4)
+        lista.hide()
+
+        def alternar(abierta):
+            lista.setVisible(abierta)
+            desplegar.setText("Ocultar géneros de música" if abierta else "Mostrar géneros de música")
+
+        desplegar.toggled.connect(alternar)
+        layout.addWidget(desplegar, 1)
+        layout.addWidget(lista, 2)  # dos filas de géneros
 
     if frases and not voz.DISPONIBLE:
         layout.addWidget(QLabel("Voz no disponible: instala pyttsx3", vista))
-
-    layout.addStretch(1)
     return vista
 
 
@@ -158,7 +194,7 @@ class VentanaPrincipal(QMainWindow):
         if HiloCamara is None:
             self._error_camara(ERROR_CAMARA)
         else:
-            self.hilo = HiloCamara(self)
+            self.hilo = HiloCamara(self, con_imagen=VISTA_PREVIA)
             self.hilo.fotograma.connect(self._nuevo_fotograma)
             self.hilo.error.connect(self._error_camara)
             self.hilo.start()
@@ -223,15 +259,8 @@ class VentanaPrincipal(QMainWindow):
         fila.addWidget(self._boton_volver(vista))
         fila.addStretch(1)
 
-        division = QSplitter(Qt.Horizontal, vista)
-        division.addWidget(self._crear_panel_modulos())
-        division.addWidget(self._crear_panel_camara())
-        division.setChildrenCollapsible(False)
-        division.setHandleWidth(2)
-        division.setSizes([550, 550])
-
         layout.addLayout(fila)
-        layout.addWidget(division, 1)
+        layout.addWidget(self._crear_panel_modulos(), 1)
         return vista
 
     def _crear_panel_modulos(self) -> QWidget:
@@ -248,7 +277,7 @@ class VentanaPrincipal(QMainWindow):
             boton.setAccessibleName(f"Ir al módulo {i + 1}: {nombre}")
             grupo.addButton(boton, i)
             barra.addWidget(boton)
-            pila.addWidget(crear_vista(f"Módulo {i + 1}: {nombre}", FRASES.get(nombre, ())))
+            pila.addWidget(crear_vista(f"Módulo {i + 1}: {nombre}", FRASES.get(nombre, ()), GENEROS.get(nombre, ())))
         grupo.button(0).setChecked(True)
         grupo.idClicked.connect(pila.setCurrentIndex)
 
@@ -261,49 +290,21 @@ class VentanaPrincipal(QMainWindow):
 
         layout.addLayout(barra)
         layout.addWidget(separador)
-        layout.addWidget(pila, 1)
+        # Desplazamiento en vez de aplastar los botones cuando la lista de géneros está abierta
+        desplazable = QScrollArea(panel)
+        desplazable.setWidget(pila)
+        desplazable.setWidgetResizable(True)
+        desplazable.setFrameShape(QFrame.NoFrame)
+        desplazable.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        layout.addWidget(desplazable, 1)
         layout.addLayout(fila_estado)
         return panel
 
-    def _crear_panel_camara(self) -> QWidget:
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(20, 20, 20, 20)
-
-        titulo = QLabel("Cámara: detección de rostro", panel)
-        titulo.setObjectName("tituloVista")
-
-        fila = QHBoxLayout()
-        self.lbl_estado = QLabel("Estado: iniciando cámara...", panel)
-        self.lbl_fps = QLabel("FPS: --", panel)
-        fila.addWidget(self.lbl_estado)
-        fila.addStretch(1)
-        fila.addWidget(self.lbl_fps)
-
-        self.vista_camara = VistaCamara(panel)
-
-        self.lbl_deteccion = QLabel("Buscando rostro...", panel)
-        self.lbl_deteccion.setAlignment(Qt.AlignCenter)
-        self.lbl_deteccion.setWordWrap(True)
-
-        layout.addWidget(titulo)
-        layout.addLayout(fila)
-        layout.addWidget(self.vista_camara, 1)
-        layout.addWidget(self.lbl_deteccion)
-        return panel
-
     def _nuevo_fotograma(self, imagen: QImage, rostros: int, fps: float, direccion: str):
-        self.vista_camara.set_imagen(imagen)
-        self.camara_navegacion.set_imagen(imagen, direccion)
+        self.camara_navegacion.set_imagen(imagen if VISTA_PREVIA else None, direccion)
         self.lbl_direccion.setText(f"Dirección: {direccion}" if direccion else "Dirección: ningún rostro en la imagen")
-        self.lbl_estado.setText(f"Estado: cámara {self.hilo.indice} activa")
-        self.lbl_fps.setText(f"FPS: {fps:.0f}")
-        self.lbl_deteccion.setText("Rostro detectado" if rostros else "Ningún rostro en la imagen")
 
     def _error_camara(self, mensaje: str):
-        self.lbl_estado.setText("Estado: cámara no disponible")
-        self.lbl_fps.setText("FPS: --")
-        self.lbl_deteccion.setText(mensaje)
         self.lbl_direccion.setText(mensaje)
 
     def closeEvent(self, evento):
@@ -327,7 +328,7 @@ def main():
         app.setStyleSheet(f.read())
 
     ventana = VentanaPrincipal()
-    ventana.show()
+    ventana.showFullScreen()
     sys.exit(app.exec_())
 
 

@@ -72,16 +72,13 @@ QPushButton:checked, QPushButton:checked:hover {
     color: #FFFFFF;
 }
 
-/* Línea bajo la barra de módulos y división entre paneles */
+/* Línea bajo la barra de módulos */
 QFrame#separador {
     background-color: #595F85;
     min-height: 2px;
     max-height: 2px;
 }
 
-QSplitter::handle:horizontal {
-    background-color: #595F85;
-}
 
 /* ==========================================================================
    CAMPOS DE TEXTO E INPUTS (QLineEdit, QTextEdit)

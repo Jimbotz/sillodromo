@@ -20,9 +20,8 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QImage
 
 MODELO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos", "face_landmarker.task")
-# MediaPipe 1.0.1 en macOS aborta el proceso con el delegado CPU (usa Metal internamente);
-# allí se usa GPU. En Linux y Windows, CPU: no requiere drivers de GPU (Docker, Raspberry Pi).
-DELEGADO = BaseOptions.Delegate.GPU if sys.platform == "darwin" else BaseOptions.Delegate.CPU
+# Siempre CPU (el delegado por defecto). En macOS se usa MediaPipe 0.10.35 (ver requirements.txt):
+# la 1.0.1 aborta allí con CPU, y con GPU retiene una copia de cada cuadro (~100 MB/s).
 
 MAX_CAMARAS = 4  # índices de OpenCV que se prueban al buscar una cámara
 MENSAJE_SIN_CAMARA = "No se pudo abrir ninguna cámara."
@@ -62,8 +61,10 @@ class HiloCamara(QThread):
     fotograma = pyqtSignal(QImage, int, float, str)  # imagen, rostros detectados, fps, dirección
     error = pyqtSignal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, con_imagen=True):
         super().__init__(parent)
+        # False: solo se calcula la dirección; no se dibuja la malla ni se crea la QImage
+        self.con_imagen = con_imagen
         # Se abre en el hilo principal: en macOS OpenCV solo puede pedir el permiso de cámara desde ahí.
         # Se prueban los primeros índices hasta dar con una cámara que entregue imagen.
         self.cap, self.indice = None, None
@@ -87,7 +88,7 @@ class HiloCamara(QThread):
 
     def _procesar(self, cap):
         opciones = vision.FaceLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=MODELO, delegate=DELEGADO),
+            base_options=BaseOptions(model_asset_path=MODELO),
             running_mode=vision.RunningMode.VIDEO,
         )
         with vision.FaceLandmarker.create_from_options(opciones) as detector:
@@ -102,11 +103,10 @@ class HiloCamara(QThread):
                 rgb = cv2.cvtColor(cv2.flip(bgr, 1), cv2.COLOR_BGR2RGB)  # espejo, como un selfie
                 # VIDEO exige marcas de tiempo estrictamente crecientes
                 marca_ms = max(marca_ms + 1, int(time.monotonic() * 1000))
-                # SRGBA: el delegado GPU no acepta imágenes de 3 canales
-                entrada = mp.Image(image_format=mp.ImageFormat.SRGBA, data=cv2.cvtColor(rgb, cv2.COLOR_RGB2RGBA))
+                entrada = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
                 resultado = detector.detect_for_video(entrada, marca_ms)
 
-                for rostro in resultado.face_landmarks:
+                for rostro in resultado.face_landmarks if self.con_imagen else ():
                     drawing_utils.draw_landmarks(
                         rgb,
                         rostro,
@@ -121,9 +121,11 @@ class HiloCamara(QThread):
                 ahora = time.monotonic()
                 fps = 1.0 / max(ahora - anterior, 1e-6)
                 anterior = ahora
-                alto, ancho, _ = rgb.shape
-                # .copy(): QImage no copia el buffer de numpy, que se reutiliza en la siguiente vuelta
-                imagen = QImage(rgb.data, ancho, alto, 3 * ancho, QImage.Format_RGB888).copy()
+                imagen = QImage()
+                if self.con_imagen:
+                    alto, ancho, _ = rgb.shape
+                    # .copy(): QImage no copia el buffer de numpy, que se reutiliza en la siguiente vuelta
+                    imagen = QImage(rgb.data, ancho, alto, 3 * ancho, QImage.Format_RGB888).copy()
                 self.fotograma.emit(imagen, len(resultado.face_landmarks), fps, direccion)
 
 
