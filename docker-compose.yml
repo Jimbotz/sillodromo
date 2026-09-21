@@ -1,0 +1,20 @@
+services:
+  sillodromo-gui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sillodromo-accessible-gui
+    environment:
+      # Variable de display para X11 forwarding
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Montaje del socket de X11 del host
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Montaje en caliente del código fuente para desarrollo
+      - ./app:/app
+    # Modo IPC host requerido para comunicación fluida con el servidor de ventanas X
+    ipc: host
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
