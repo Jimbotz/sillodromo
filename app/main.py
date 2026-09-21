@@ -7,11 +7,15 @@ Todo se maneja como bloques con la cruceta de la cabeza (camara.Cruceta): girar 
 selección al bloque vecino, que se ilumina, y abrir la boca lo pulsa. Las flechas del teclado
 hacen lo mismo que girar la cabeza. Al arrancar con cámara se calibra primero (luz, reposo, rangos
 de giro y apertura de la boca; ver camara.Calibracion); Esc la omite.
+Después se calibra la pantalla (16 puntos en el borde) y los ojos + la cabeza mueven un puntero:
+mirar un bloque lo selecciona y quedarse en él lo activa (camara.Permanencia).
 Funciona en Windows, macOS y Linux (nativo o en Docker vía X11).
 """
 
+import math
 import os
 import sys
+import time
 
 from PyQt5.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer
 from PyQt5.QtGui import QColor, QImage, QKeySequence, QPainter, QPainterPath, QPen, QPolygonF
@@ -35,7 +39,7 @@ from PyQt5.QtWidgets import (
 import voz
 
 try:
-    from camara import HiloCamara
+    from camara import HiloCamara, ModeloMirada, Permanencia
     ERROR_CAMARA = None
 except ImportError as e:  # p. ej. Mac Intel: MediaPipe no publica paquete para esa plataforma
     HiloCamara = None
@@ -62,6 +66,35 @@ ANGULOS = {"arriba": 0, "derecha": 90, "abajo": 180, "izquierda": 270}
 VECTORES = {"izquierda": (-1, 0), "derecha": (1, 0), "arriba": (0, -1), "abajo": (0, 1)}
 
 
+# Calibración de pantalla del puntero: 5 puntos arriba, 5 abajo y 3 en cada lado, lo más cerca
+# del borde que se pueda sin que el blanco quede cortado
+MARGEN_PUNTOS = 0.04
+ASENTAR, MUESTREO = 0.8, 1.2  # por punto: tiempo para llevar la mirada y tiempo midiendo
+SUAVIZADO = 0.25  # 0-1: cuánto sigue el puntero a cada medida nueva (bajo = estable pero lento)
+# Tras activar algo, la pantalla suele cambiar y bajo la mirada queda otro bloque: nada cuenta
+# hasta que la mirada se mueva esta distancia (fracción de la pantalla). Evita activar en cadena.
+REARME = 0.08
+ERROR_MAXIMO = 0.15  # si la calibración de pantalla falla por más que esto, se usa la cruceta
+
+
+def puntos_calibracion() -> list:
+    """16 puntos (x, y de 0 a 1) en el sentido del reloj desde la esquina superior izquierda."""
+    m = MARGEN_PUNTOS
+    xs = [m + (1 - 2 * m) * i / 4 for i in range(5)]
+    ys = (0.25, 0.5, 0.75)
+    return ([(x, m) for x in xs] + [(1 - m, y) for y in ys]
+            + [(x, 1 - m) for x in reversed(xs)] + [(m, y) for y in reversed(ys)])
+
+
+def caja(w: QWidget) -> QRect:
+    """Rectángulo del widget en coordenadas de pantalla."""
+    return QRect(w.mapToGlobal(QPoint(0, 0)), w.size())
+
+
+def bloques_visibles(contenedor: QWidget) -> list:
+    return [b for b in contenedor.findChildren(QPushButton) if b.isVisible() and b.isEnabled()]
+
+
 def primer_bloque(contenedor: QWidget) -> QPushButton:
     """Primer botón visible dentro del contenedor (orden de creación)."""
     return next(b for b in contenedor.findChildren(QPushButton) if b.isVisible())
@@ -70,6 +103,12 @@ def primer_bloque(contenedor: QWidget) -> QPushButton:
 def _llenar(boton: QPushButton) -> QPushButton:
     """El botón crece para repartirse la pantalla con los demás."""
     boton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+    return boton
+
+
+def _volver(boton: QPushButton) -> QPushButton:
+    """Los botones de volver van en una esquina, pero grandes: la mirada no apunta al píxel."""
+    boton.setMinimumSize(360, 110)
     return boton
 
 
@@ -188,6 +227,75 @@ class VistaCamara(QWidget):
                 ]))
 
 
+class VistaPuntos(QWidget):
+    """Calibración de pantalla: un blanco por punto; su anillo se cierra mientras se mide."""
+
+    def __init__(self):
+        super().__init__()
+        self.punto, self.progreso = (0.5, 0.5), 0.0
+        self.texto = QLabel(self)
+        self.texto.setObjectName("instruccion")
+        self.texto.setAlignment(Qt.AlignCenter)
+        self.texto.setWordWrap(True)
+        layout = QVBoxLayout(self)
+        layout.addStretch(1)
+        layout.addWidget(self.texto)
+        layout.addStretch(1)
+        self.setAccessibleName("Calibración de la mirada")
+
+    def mostrar(self, punto: tuple, progreso: float, texto: str):
+        self.punto, self.progreso = punto, progreso
+        self.texto.setText(texto)
+        self.update()
+
+    def paintEvent(self, _evento):
+        if self.punto is None:
+            return  # solo texto (p. ej. el resultado)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        centro = QPointF(self.punto[0] * self.width(), self.punto[1] * self.height())
+        r = min(self.width(), self.height()) * 0.03
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(QColor("#595F85"), 4))
+        p.drawEllipse(centro, r, r)
+        p.setPen(QPen(QColor("#E69F00"), 6))
+        p.drawArc(QRectF(centro.x() - r, centro.y() - r, 2 * r, 2 * r), 90 * 16, -int(360 * 16 * self.progreso))
+        p.setPen(QPen(QColor("#1E1E24"), 2))
+        p.setBrush(QColor("#E69F00"))
+        p.drawEllipse(centro, r * 0.35, r * 0.35)
+
+
+class CapaMirada(QWidget):
+    """Capa transparente encima de todo: el punto de la mirada y, en el bloque seleccionado, una
+    barra que se llena hasta activarlo. No recibe clics."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.punto, self.caja, self.progreso = None, None, 0.0
+
+    def mostrar(self, punto, caja_local, progreso: float):
+        self.punto, self.caja, self.progreso = punto, caja_local, progreso
+        self.update()
+
+    def paintEvent(self, _evento):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        if self.caja is not None and self.progreso > 0:
+            # Oscuro sobre el ámbar del bloque seleccionado: contraste 7,36:1
+            barra = QRectF(self.caja.left() + 8, self.caja.bottom() - 20, (self.caja.width() - 16) * self.progreso, 12)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor("#1E1E24"))
+            p.drawRoundedRect(barra, 4, 4)
+        if self.punto is not None:
+            centro = QPointF(*self.punto)
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QPen(QColor("#1E1E24"), 7))  # borde oscuro: se ve sobre fondos claros y oscuros
+            p.drawEllipse(centro, 16, 16)
+            p.setPen(QPen(QColor("#F4F4F6"), 3))
+            p.drawEllipse(centro, 16, 16)
+
+
 class VentanaPrincipal(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -195,13 +303,22 @@ class VentanaPrincipal(QMainWindow):
         self.resize(1100, 700)
         self.setMinimumSize(900, 560)
 
-        # Vistas generales: 0 menú, 1 navegación, 2 activadores, 3 calibración
+        # Vistas generales: 0 menú, 1 navegación, 2 activadores, 3 calibración, 4 calibración de pantalla
         self.vistas = QStackedWidget(self)
         self.vistas.addWidget(self._crear_menu())
         self.vistas.addWidget(self._crear_navegacion())
         self.vistas.addWidget(self._crear_activadores())
         self.vistas.addWidget(self._crear_calibracion())
+        self.vista_puntos = VistaPuntos()
+        self.vistas.addWidget(self.vista_puntos)
         self.setCentralWidget(self.vistas)
+        self.capa = CapaMirada(self)  # encima de todo; se ajusta en resizeEvent
+
+        # Puntero de la mirada: activo cuando termina la calibración de pantalla
+        self.modelo_mirada, self.mirada, self.omitir = None, None, False
+        self.ancla = None  # dónde estaba la mirada al activar el último bloque (ver REARME)
+        self.permanencia = Permanencia() if HiloCamara is not None else None
+        self.t_rasgos = time.monotonic()
 
         self.hilo = None
         if HiloCamara is None:
@@ -210,13 +327,15 @@ class VentanaPrincipal(QMainWindow):
             self.hilo = HiloCamara(self, con_imagen=VISTA_PREVIA)
             self.hilo.fotograma.connect(self._nuevo_fotograma)
             self.hilo.error.connect(self._error_camara)
-            self.hilo.gesto.connect(self._gesto)
+            self.hilo.gesto.connect(self._gesto_cabeza)
             self.hilo.calibrando.connect(self._calibrando)
             self.hilo.calibrado.connect(self._calibrado)
+            self.hilo.rasgos.connect(self._rasgos)
             self.vistas.setCurrentIndex(3)  # con cámara, arranca calibrando
             self.hilo.start()
-            # Esc: omitir la calibración (valores por defecto), p. ej. si otra persona configura la silla
-            QShortcut(QKeySequence(Qt.Key_Escape), self, lambda: setattr(self.hilo.calibracion, "omitida", True))
+            # Esc: omitir las calibraciones (valores por defecto y cruceta sin puntero),
+            # p. ej. si otra persona configura la silla
+            QShortcut(QKeySequence(Qt.Key_Escape), self, self._omitir)
 
         # Las flechas del teclado hacen lo mismo que girar la cabeza (pruebas sin cámara o pulsadores)
         for tecla, gesto in ((Qt.Key_Left, "izquierda"), (Qt.Key_Right, "derecha"),
@@ -225,7 +344,7 @@ class VentanaPrincipal(QMainWindow):
 
     def _gesto(self, gesto: str):
         """Cruceta: una dirección selecciona el bloque vecino en esa dirección; "pulsar" lo activa."""
-        bloques = [b for b in self.vistas.currentWidget().findChildren(QPushButton) if b.isVisible() and b.isEnabled()]
+        bloques = bloques_visibles(self.vistas.currentWidget())
         if not bloques:
             return  # p. ej. en la pantalla de calibración
         actual = self.focusWidget()
@@ -236,7 +355,6 @@ class VentanaPrincipal(QMainWindow):
             actual.animateClick()  # se ve hundirse un instante antes de actuar
             return
         dx, dy = VECTORES[gesto]
-        caja = lambda w: QRect(w.mapToGlobal(QPoint(0, 0)), w.size())
         aqui = caja(actual)
         mejor, menor = None, None
         for bloque in bloques:
@@ -271,7 +389,7 @@ class VentanaPrincipal(QMainWindow):
         (self.botones_dispositivo[0] if indice == 2 else primer_bloque(self.vistas.currentWidget())).setFocus()
 
     def _boton_volver(self, parent) -> QPushButton:
-        boton = QPushButton("Volver al menú", parent)
+        boton = _volver(QPushButton("Volver al menú", parent))
         boton.clicked.connect(lambda: self._ir_a(0))
         return boton
 
@@ -285,12 +403,11 @@ class VentanaPrincipal(QMainWindow):
         titulo.setObjectName("tituloVista")
         layout.addWidget(titulo)
         for indice, nombre in ((1, "Navegación"), (2, "Activadores")):
-            boton = QPushButton(nombre, menu)
+            boton = _llenar(QPushButton(nombre, menu))  # bloques grandes: blancos fáciles para la mirada
             boton.setObjectName("primaryBtn")
             boton.setAccessibleName(f"Ir a la vista {nombre}")
             boton.clicked.connect(lambda _, i=indice: self._ir_a(i))
-            layout.addWidget(boton)
-        layout.addStretch(1)
+            layout.addWidget(boton, 1)
         return menu
 
     def _crear_navegacion(self) -> QWidget:
@@ -362,7 +479,7 @@ class VentanaPrincipal(QMainWindow):
         layout = QVBoxLayout(fase)
         layout.setContentsMargins(20, 12, 20, 20)
 
-        volver = QPushButton("Volver a dispositivos", fase)
+        volver = _volver(QPushButton("Volver a dispositivos", fase))
         volver.setAccessibleName(f"Volver a elegir dispositivo (ahora: {nombre})")
         volver.clicked.connect(lambda: self._volver_a_dispositivos(i))
         fila = QHBoxLayout()
@@ -438,7 +555,99 @@ class VentanaPrincipal(QMainWindow):
         self.lbl_instruccion.setText(texto)
         self.guia_calibracion.set_imagen(None, "")
         self.barra_calibracion.setValue(1000)
-        QTimer.singleShot(5000 if sin_calibrar else 1500, lambda: self.vistas.currentIndex() == 3 and self._ir_a(0))
+        QTimer.singleShot(5000 if sin_calibrar else 1500, lambda: self.vistas.currentIndex() == 3 and self._tras_calibrar())
+
+    def _tras_calibrar(self):
+        if self.omitir:
+            self._ir_a(0)  # Esc: sin puntero de la mirada; queda la cruceta
+            return
+        self.puntos, self.i_punto, self.t_punto, self.muestras = puntos_calibracion(), 0, 0.0, []
+        self.vistas.setCurrentIndex(4)
+        self._mostrar_punto()
+
+    def _omitir(self):
+        self.omitir = True
+        if self.hilo is not None:
+            self.hilo.calibracion.omitida = True
+        if self.vistas.currentIndex() == 4:
+            self._ir_a(0)
+
+    def _mostrar_punto(self):
+        texto = (f"Mira el punto y mueve la cabeza lo que necesites\n"
+                 f"Punto {self.i_punto + 1} de {len(self.puntos)} · Esc: omitir")
+        self.vista_puntos.mostrar(self.puntos[self.i_punto], max(0.0, self.t_punto - ASENTAR) / MUESTREO, texto)
+
+    def _gesto_cabeza(self, gesto: str):
+        # Con el puntero de la mirada, girar la cabeza mueve el puntero: solo cuenta "pulsar" (boca)
+        if self.modelo_mirada is None or gesto == "pulsar":
+            self._gesto(gesto)
+
+    def _rasgos(self, rasgos):
+        # Solo llegan cuadros con cara: sin cara, el tiempo de calibración y de permanencia no corre
+        ahora = time.monotonic()
+        dt, self.t_rasgos = min(ahora - self.t_rasgos, 0.1), ahora
+        if self.vistas.currentIndex() == 4:
+            if self.i_punto >= 0:
+                self._medir_punto(rasgos, dt)
+        elif self.modelo_mirada is not None:
+            self._mover_puntero(rasgos, dt)
+
+    def _medir_punto(self, rasgos, dt: float):
+        self.t_punto += dt
+        if self.t_punto > ASENTAR:  # el primer tramo es para llevar la mirada al punto: no se mide
+            self.muestras.append((rasgos, self.puntos[self.i_punto]))
+        if self.t_punto >= ASENTAR + MUESTREO:
+            self.i_punto, self.t_punto = self.i_punto + 1, 0.0
+            if self.i_punto == len(self.puntos):
+                self._terminar_puntos()
+                return
+        self._mostrar_punto()
+
+    def _terminar_puntos(self):
+        rasgos, posiciones = zip(*self.muestras)
+        modelo = ModeloMirada(rasgos, posiciones)
+        error = modelo.error_medio(rasgos, posiciones)
+        print(f"Calibración de pantalla: error medio {error:.3f} de la pantalla", flush=True)
+        if error <= ERROR_MAXIMO:
+            self.modelo_mirada = modelo
+            texto, espera = "Listo: mira un bloque y quédate en él para activarlo", 2000
+        else:  # un puntero impreciso activaría cosas al azar: mejor la cruceta
+            texto, espera = ("No pude calibrar la mirada con precisión.\n"
+                             "Se usará la cabeza como cruceta. Reinicia para intentarlo de nuevo."), 5000
+        self.vista_puntos.mostrar(None, 0.0, texto)
+        self.i_punto = -1  # la calibración terminó: _rasgos ya no mide aquí
+        QTimer.singleShot(espera, lambda: self.vistas.currentIndex() == 4 and self._ir_a(0))
+
+    def _mover_puntero(self, rasgos, dt: float):
+        x, y = self.modelo_mirada.predecir(rasgos)
+        if self.mirada is None:
+            self.mirada = (x, y)
+        else:  # suavizado exponencial: quita el temblor de la medida
+            self.mirada = (self.mirada[0] + SUAVIZADO * (x - self.mirada[0]), self.mirada[1] + SUAVIZADO * (y - self.mirada[1]))
+        punto = QPoint(int(self.mirada[0] * self.width()), int(self.mirada[1] * self.height()))
+        global_ = self.mapToGlobal(punto)
+        bajo = next((b for b in bloques_visibles(self.vistas.currentWidget()) if caja(b).contains(global_)), None)
+        if self.ancla is not None:
+            if math.dist(self.mirada, self.ancla) < REARME:
+                bajo = None  # recién activado: hasta que la mirada se mueva, no cuenta nada
+            else:
+                self.ancla = None
+        if self.permanencia.bloque is not None and not self.permanencia.bloque.isVisible():
+            self.permanencia = Permanencia()  # la pantalla cambió: el bloque anterior ya no está
+        activar = self.permanencia.actualizar(bajo, dt)
+        bloque = self.permanencia.bloque  # con la gracia, puede seguir siendo el anterior un instante
+        if bloque is not None and bloque is not self.focusWidget():
+            bloque.setFocus()
+        if activar:
+            bloque.animateClick()
+            self.ancla = self.mirada
+        caja_local = QRect(self.capa.mapFromGlobal(caja(bloque).topLeft()), bloque.size()) if bloque is not None else None
+        self.capa.mostrar((punto.x(), punto.y()), caja_local, self.permanencia.progreso)
+
+    def resizeEvent(self, evento):
+        super().resizeEvent(evento)
+        self.capa.setGeometry(self.rect())
+        self.capa.raise_()
 
     def _nuevo_fotograma(self, imagen: QImage, rostros: int, fps: float, direccion: str):
         self.camara_navegacion.set_imagen(imagen if VISTA_PREVIA else None, direccion)
@@ -446,7 +655,7 @@ class VentanaPrincipal(QMainWindow):
 
     def _error_camara(self, mensaje: str):
         self.lbl_direccion.setText(mensaje)
-        if self.vistas.currentIndex() == 3:  # sin cámara no hay nada que calibrar
+        if self.vistas.currentIndex() in (3, 4):  # sin cámara no hay nada que calibrar
             self._ir_a(0)
 
     def closeEvent(self, evento):

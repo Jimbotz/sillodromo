@@ -503,6 +503,7 @@ QPushButton#dangerBtn:focus {
 QLabel#instruccion {
     font-size: 32px;
     font-weight: 700;
+    background-color: transparent; /* no tapar los blancos de la calibración de pantalla */
 }
 
 QProgressBar {

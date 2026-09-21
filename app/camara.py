@@ -254,6 +254,82 @@ class Cruceta:
         return None
 
 
+# ---------------------------------------------------------------------------
+# Puntero con ojos y cara: mirar un bloque lo selecciona y quedarse en él lo activa
+# ---------------------------------------------------------------------------
+# Modelo de 478 puntos: (centro del iris, esquina, esquina, párpado superior, párpado inferior)
+OJOS = ((468, 33, 133, 159, 145), (473, 362, 263, 386, 374))
+RIDGE = 1e-2  # regularización del ajuste: evita que un punto mal mirado deforme todo
+TIEMPO_PERMANENCIA = 1.5  # segundos mirando un bloque para activarlo
+GRACIA = 0.3  # segundos que la mirada puede salirse del bloque sin reiniciar el tiempo (parpadeo, temblor)
+
+
+def rasgos_mirada(puntos) -> np.ndarray:
+    """Lo que mueve el puntero: dónde está cada iris dentro de su ojo (4 valores) y hacia dónde
+    apunta la cabeza (2 valores de medidas_cara). Así el usuario puede apuntar con los ojos,
+    con la cabeza o con ambos, según lo que pueda mover."""
+    valores = []
+    for iris, a, b, arriba, abajo in OJOS:
+        valores.append((puntos[iris].x - puntos[a].x) / max(puntos[b].x - puntos[a].x, 1e-6))
+        valores.append((puntos[iris].y - puntos[arriba].y) / max(puntos[abajo].y - puntos[arriba].y, 1e-6))
+    return np.array([*valores, *medidas_cara(puntos)])
+
+
+class ModeloMirada:
+    """Ajuste lineal (con ridge) de rasgos_mirada -> posición en pantalla, de 0 a 1 en x e y.
+    Se entrena con las muestras de la calibración de pantalla."""
+
+    def __init__(self, rasgos, posiciones):
+        x = np.asarray(rasgos, float)
+        self.media, self.escala = x.mean(axis=0), x.std(axis=0) + 1e-9
+        a = self._diseno(x)
+        # ponytail: lineal; si las esquinas quedan cortas, añadir términos cuadráticos en _diseno
+        self.pesos = np.linalg.solve(a.T @ a + RIDGE * np.eye(a.shape[1]), a.T @ np.asarray(posiciones, float))
+
+    def _diseno(self, x):
+        x = (np.atleast_2d(x) - self.media) / self.escala
+        return np.hstack([np.ones((len(x), 1)), x])
+
+    def predecir(self, rasgos) -> tuple:
+        x, y = (self._diseno(rasgos) @ self.pesos)[0]
+        return float(np.clip(x, 0, 1)), float(np.clip(y, 0, 1))
+
+    def error_medio(self, rasgos, posiciones) -> float:
+        """Distancia media (fracción de pantalla) entre lo predicho y los puntos mirados."""
+        return float(np.mean([np.hypot(*(np.array(self.predecir(r)) - p)) for r, p in zip(rasgos, posiciones)]))
+
+
+class Permanencia:
+    """Temporizador de permanencia: activa un bloque cuando la mirada se queda en él
+    TIEMPO_PERMANENCIA segundos. Salidas de menos de GRACIA no reinician el tiempo. Tras activarlo
+    hay que salir del bloque para poder activarlo otra vez (no se repite solo)."""
+
+    def __init__(self):
+        self.bloque, self.tiempo, self.fuera, self.usado = None, 0.0, 0.0, False
+
+    def actualizar(self, bloque, dt: float) -> bool:
+        """bloque: el que está bajo la mirada (o None). Devuelve True cuando toca activarlo."""
+        if bloque is not self.bloque:
+            self.fuera += dt
+            if self.bloque is not None and self.fuera < GRACIA:
+                return False  # salida breve: se conserva el tiempo acumulado
+            self.bloque, self.tiempo, self.fuera, self.usado = bloque, 0.0, 0.0, False
+        else:
+            self.fuera = 0.0
+        if self.bloque is None or self.usado:
+            return False
+        self.tiempo += dt
+        if self.tiempo >= TIEMPO_PERMANENCIA:
+            self.usado = True
+            return True
+        return False
+
+    @property
+    def progreso(self) -> float:
+        """0 a 1 hacia la activación del bloque actual."""
+        return 0.0 if self.bloque is None or self.usado else min(1.0, self.tiempo / TIEMPO_PERMANENCIA)
+
+
 class HiloCamara(QThread):
     """Lee la cámara y ejecuta MediaPipe fuera del hilo de la interfaz."""
 
@@ -262,6 +338,7 @@ class HiloCamara(QThread):
     gesto = pyqtSignal(str)  # "izquierda", "derecha", "arriba", "abajo" o "pulsar"
     calibrando = pyqtSignal(str, str, float, bool)  # paso, instrucción, progreso 0-1, cara a la vista
     calibrado = pyqtSignal(str, tuple)  # resumen y lo que quedó sin calibrar; desde aquí, cruceta
+    rasgos = pyqtSignal(object)  # rasgos_mirada de cada cuadro con cara, tras la calibración inicial
 
     def __init__(self, parent=None, con_imagen=True):
         super().__init__(parent)
@@ -351,6 +428,8 @@ class HiloCamara(QThread):
                     gesto = cruceta.actualizar(estado_cara(cara, mandibula, perfil) if cara else "")
                     if gesto:
                         self.gesto.emit(gesto)
+                    if cara:
+                        self.rasgos.emit(rasgos_mirada(cara))
 
                 fps = 1.0 / dt
                 imagen = QImage()
@@ -427,3 +506,32 @@ if __name__ == "__main__":
     buena = np.tile(np.linspace(0, 255, 640).astype(np.uint8), (480, 1))  # brillo 127, contraste 74
     assert curva_si_hace_falta(cv2.merge([buena] * 3)) is None  # buena luz: no se toca
     print("curva_clahe: OK")
+
+    # ModeloMirada: con rasgos que dependen (con ruido) de la posición mirada, la recupera
+    azar = np.random.default_rng(0)
+    objetivos = azar.uniform(0, 1, (400, 2))
+    mezcla = azar.normal(size=(2, 6))
+    rasgos = objetivos @ mezcla + azar.normal(scale=0.01, size=(400, 6))
+    modelo = ModeloMirada(rasgos, objetivos)
+    error = max(np.hypot(*(np.array(modelo.predecir(r)) - o)) for r, o in zip(rasgos, objetivos))
+    assert error < 0.05, error
+    assert modelo.predecir(np.array([9.0, 9, 9, 9, 9, 9]) * 100) in {(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0)}
+    assert modelo.error_medio(rasgos, objetivos) < 0.02
+    quieto = azar.normal(scale=0.001, size=(400, 6))  # no movió los ojos ni la cabeza: el ajuste no sirve
+    assert ModeloMirada(quieto, objetivos).error_medio(quieto, objetivos) > 0.15
+    print("ModeloMirada: OK")
+
+    # Permanencia a 30 cuadros por segundo
+    per, dt, A, B = Permanencia(), 1 / 30, "bloque A", "bloque B"
+    activaciones = lambda bloques: sum(per.actualizar(b, dt) for b in bloques)
+    n = round(TIEMPO_PERMANENCIA * 30)
+    assert activaciones([A] * (n - 2)) == 0 and 0.9 < per.progreso < 1  # aún no
+    assert activaciones([A] * 3) == 1 and per.progreso == 0  # se activa una vez
+    assert activaciones([A] * n * 2) == 0  # quedarse no la repite
+    assert activaciones([None] * 15 + [A] * (n + 1)) == 1  # salir y volver la rehabilita
+    assert activaciones([B] * 5) == 0 and per.bloque == A  # pasar a otro bloque también espera GRACIA
+    per = Permanencia()
+    assert activaciones([B] * (n // 2) + [None] * 5 + [B] * (n // 2 + 2)) == 1  # parpadeo corto: no reinicia
+    per = Permanencia()
+    assert activaciones([B] * (n // 2) + [None] * 15 + [B] * (n // 2 + 2)) == 0  # salida larga: reinicia
+    print("Permanencia: OK")

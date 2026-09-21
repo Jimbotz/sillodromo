@@ -141,6 +141,17 @@ Con cámara, la app arranca calibrando (unos 25 s) antes de mostrar el menú. Ca
 
 `Esc` omite la calibración y usa los valores por defecto. El resultado se imprime en la terminal. Las perillas de calibración (`FRACCION_RANGO`, `UMBRAL_MINIMO`, `LUZ_MINIMA`, `CONTRASTE_MINIMO`, etc.) están en `app/camara.py`.
 
+## Puntero con ojos y cara (permanencia)
+
+Tras la calibración inicial se calibra la pantalla: aparecen, de uno en uno, 16 blancos en el borde (5 arriba, 5 abajo y 3 en cada lado). Hay que mirar cada blanco moviendo los ojos, la cabeza o ambos, lo que haga falta. Con esas muestras se ajusta un modelo que convierte la posición de los iris y de la cabeza en un punto de la pantalla.
+
+- **Mirar un bloque lo selecciona** (se ilumina) y una barra se llena. A los 1,5 s de seguir mirándolo, se activa (`TIEMPO_PERMANENCIA`). Salirse menos de 0,3 s, por ejemplo al parpadear, no reinicia el tiempo (`GRACIA`).
+- **No se activa en cadena:** después de activar algo, nada cuenta hasta que la mirada se mueve (`REARME`). Así, si al cambiar de pantalla queda otro bloque bajo la mirada, no se activa solo.
+- **Abrir la boca** sigue pulsando al instante el bloque seleccionado. En este modo, girar la cabeza no mueve la selección: mueve el puntero.
+- **Si la calibración de pantalla es imprecisa** (error medio > 15 % de la pantalla, `ERROR_MAXIMO`), se avisa y se usa la cruceta. `Esc` omite ambas calibraciones.
+
+Perillas: `TIEMPO_PERMANENCIA`, `GRACIA` y `RIDGE` en `app/camara.py`; `ASENTAR`, `MUESTREO`, `SUAVIZADO`, `REARME` y `ERROR_MAXIMO` en `app/main.py`.
+
 ## Atajos de Teclado de Accesibilidad
 
 | Tecla / Atajo | Acción |
