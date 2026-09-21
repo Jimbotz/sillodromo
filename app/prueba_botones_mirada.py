@@ -14,7 +14,8 @@ y prueba la logica de seleccion de botones por mirada:
        umbrales de la direccion en la que estas mirando.
 
 Uso:
-    .\\.venv\\Scripts\\python.exe app\\prueba_botones_mirada.py
+    .\\.venv\\Scripts\\python.exe app\\prueba_botones_mirada.py     (Windows)
+    .venv/bin/python app/prueba_botones_mirada.py                (macOS y Linux)
 
 Controles: ESC para salir, R para recalibrar, alzar las cejas = click.
 """
@@ -23,6 +24,7 @@ import os
 import sys
 import time
 import ctypes
+import ctypes.util
 
 import cv2
 import numpy as np
@@ -30,7 +32,9 @@ import mediapipe as mp
 from mediapipe.tasks.python import BaseOptions, vision
 
 MODOLO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos", "face_landmarker.task")
-DELEGADO = BaseOptions.Delegate.GPU if sys.platform == "darwin" else BaseOptions.Delegate.CPU
+# Siempre CPU, como la app: en macOS el delegado GPU retiene una copia de cada cuadro
+# (~3,3 MB por cuadro, ~100 MB/s a 30 fps; medido con MediaPipe 0.10.35 y 1.0.1).
+DELEGADO = BaseOptions.Delegate.CPU
 MAX_CAMARAS = 4
 
 # ---------------------------------------------------------------------------
@@ -238,18 +242,43 @@ class LectorMirada:
 
 
 def screen_resolution() -> tuple:
-    """Resolucion real de la pantalla principal (DPI-aware)."""
+    """Resolucion de la pantalla principal, con la API de cada sistema (ctypes, sin dependencias):
+    Windows: user32 (DPI-aware); macOS: CoreGraphics; Linux: Xlib (X11 o XWayland).
+    Si no se puede medir, 1280x720: la ventana de OpenCV a pantalla completa escala el lienzo igual."""
     try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
-    except Exception:
-        try:
-            ctypes.windll.user32.SetProcessDPIAware()
-        except Exception:
-            pass
-    return (
-        ctypes.windll.user32.GetSystemMetrics(0),
-        ctypes.windll.user32.GetSystemMetrics(1),
-    )
+        if sys.platform == "win32":
+            try:
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)
+            except Exception:
+                try:
+                    ctypes.windll.user32.SetProcessDPIAware()
+                except Exception:
+                    pass
+            return (
+                ctypes.windll.user32.GetSystemMetrics(0),
+                ctypes.windll.user32.GetSystemMetrics(1),
+            )
+        if sys.platform == "darwin":
+            cg = ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
+            cg.CGMainDisplayID.restype = ctypes.c_uint32
+            for funcion in (cg.CGDisplayPixelsWide, cg.CGDisplayPixelsHigh):
+                funcion.argtypes, funcion.restype = [ctypes.c_uint32], ctypes.c_size_t
+            pantalla = cg.CGMainDisplayID()
+            return int(cg.CGDisplayPixelsWide(pantalla)), int(cg.CGDisplayPixelsHigh(pantalla))
+        x11 = ctypes.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
+        x11.XOpenDisplay.argtypes, x11.XOpenDisplay.restype = [ctypes.c_char_p], ctypes.c_void_p
+        x11.XDefaultScreen.argtypes = [ctypes.c_void_p]
+        x11.XDisplayWidth.argtypes = x11.XDisplayHeight.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+        pantalla = x11.XOpenDisplay(None)  # usa $DISPLAY
+        if pantalla:
+            n = x11.XDefaultScreen(pantalla)
+            tamano = x11.XDisplayWidth(pantalla, n), x11.XDisplayHeight(pantalla, n)
+            x11.XCloseDisplay(pantalla)
+            return tamano
+    except (OSError, AttributeError) as e:
+        print(f"No pude medir la pantalla ({e}); uso 1280x720", flush=True)
+    return 1280, 720
 
 
 class PruebaBotones:
