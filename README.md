@@ -35,9 +35,10 @@ sillodromo/
 ├── requirements.txt            # Dependencias Python (PyQt5, MediaPipe)
 ├── README.md                   # Documentación y guía de despliegue multiplataforma
 └── app/
-    ├── main.py                 # Vistas Menú, Navegación (cámara + flecha) y Activadores (módulos y cámara)
-    ├── voz.py                  # Texto a voz con pyttsx3 (botones del módulo Alexa 1)
-    ├── camara.py               # Captura de cámara + detección de rostro con MediaPipe (en un hilo aparte)
+    ├── main.py                 # Vistas Menú, Navegación, Configuración e Interacción
+    ├── control.py              # Calibración, gestos, mirada filtrada y máquina de estados
+    ├── voz.py                  # Texto a voz no bloqueante con pyttsx3 o spd-say
+    ├── camara.py               # Cámara, CLAHE y MediaPipe en un hilo aparte
     ├── modelos/face_landmarker.task  # Modelo de MediaPipe para la detección de rostro
     ├── palette.py              # Definición matemática de colores, luminancia y ratios WCAG
     └── styles.qss              # Hoja de estilos Qt accesible WCAG 2.1
@@ -153,13 +154,15 @@ python3 -m venv --system-site-packages .venv
 
 - **macOS**: la primera vez el sistema pide permiso de cámara para la terminal desde la que lanzas la app. Si no aparece o lo negaste, actívalo en *Ajustes del Sistema > Privacidad y seguridad > Cámara*.
 - **Mac Intel**: MediaPipe no publica paquete para esta plataforma; la app arranca igual y el panel de la cámara indica que no está disponible.
-- **Docker**: solo en hosts Linux, descomentando el bloque `devices` de `docker-compose.yml`. Docker Desktop (macOS/Windows) no puede pasar la webcam al contenedor; allí ejecuta la app de forma nativa.
+- La aplicación usa el índice de cámara `1`, que corresponde a la segunda cámara del prototipo.
+- Al iniciar se calibra primero el centro facial y después la mirada con cinco puntos que cubren el centro y las cuatro esquinas de la pantalla. La calibración ocular también puede repetirse desde Configuración.
+- **Docker**: solo en hosts Linux, descomentando `/dev/video1` en `docker-compose.yml`. Docker Desktop (macOS/Windows) no puede pasar la webcam al contenedor; allí ejecuta la app de forma nativa.
 
 ---
 
 ### Voz
 
-Los botones del módulo Alexa 1 dicen "Alexa", "Alexa, enciende la luz" y "Alexa, apaga la luz" con `pyttsx3`, usando una voz en español si el sistema tiene alguna. En Linux necesita `espeak-ng` (`sudo apt install espeak-ng`). En Docker el contenedor no tiene salida de audio, así que las frases no se oyen.
+Las tarjetas de Cafetera, Ventilador, Secadora y Lavadora emiten órdenes como "Alexa, activa Cafetera". Se usa `pyttsx3` y, como respaldo en Linux, `spd-say`. En Docker el contenedor no tiene salida de audio configurada, así que para probar TTS se recomienda la ejecución nativa.
 
 ## Desarrollo y Modificación en Vivo (Hot Reload)
 

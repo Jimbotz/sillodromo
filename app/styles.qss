@@ -146,6 +146,45 @@ QPushButton:disabled {
     border-color: #3E425E;
 }
 
+QPushButton#menuCard, QPushButton#settingCard, QPushButton[deviceCard="true"] {
+    background-color: #2B2D42;
+    border: 3px solid #595F85;
+    border-radius: 14px;
+    padding: 24px;
+    font-size: 18px;
+}
+
+QPushButton#menuCard:hover, QPushButton#settingCard:hover,
+QPushButton[deviceCard="true"]:hover {
+    background-color: #363953;
+    border-color: #8E92AA;
+}
+
+QPushButton[deviceCard="true"][deviceActive="true"] {
+    background-color: #103B32;
+    color: #A3F7DF;
+    border-color: #009E73;
+}
+
+QPushButton[deviceCard="true"][deviceActive="false"] {
+    background-color: #2B2D42;
+    color: #F4F4F6;
+    border-color: #595F85;
+}
+
+QPushButton[gazeHover="true"], QPushButton[gazeHover="true"]:hover {
+    border: 4px solid #E69F00;
+}
+
+QLabel#statusLabel {
+    background-color: #11324D;
+    color: #CBEBFC;
+    border: 2px solid #56B4E9;
+    border-radius: 8px;
+    padding: 12px;
+    font-weight: 600;
+}
+
 /* Botón Primario de Acción */
 QPushButton#primaryBtn, QPushButton[accessibleRole="primary"] {
     background-color: #0072B2;
