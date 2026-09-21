@@ -72,12 +72,6 @@ QPushButton:checked, QPushButton:checked:hover {
     color: #FFFFFF;
 }
 
-/* Línea bajo la barra de módulos */
-QFrame#separador {
-    background-color: #595F85;
-    min-height: 2px;
-    max-height: 2px;
-}
 
 
 /* ==========================================================================
@@ -485,4 +479,41 @@ QScrollBar::handle:horizontal:pressed {
 
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     width: 0px;
+}
+
+/* ==========================================================================
+   BLOQUE SELECCIONADO POR LA CRUCETA
+   Se ilumina entero (no solo el borde) y el borde se vuelve marfil: el cambio se nota por
+   relleno y por borde, no solo por color. Va al final para ganar a :checked y :hover.
+   Texto #1E1E24 sobre #E69F00: contraste 7,36:1 (AAA).
+   ========================================================================== */
+QPushButton:focus,
+QPushButton:checked:focus,
+QPushButton:focus:hover,
+QPushButton#primaryBtn:focus,
+QPushButton#dangerBtn:focus {
+    background-color: #E69F00;
+    color: #1E1E24;
+    border: 3px solid #F4F4F6;
+}
+
+/* ==========================================================================
+   CALIBRACIÓN INICIAL
+   ========================================================================== */
+QLabel#instruccion {
+    font-size: 32px;
+    font-weight: 700;
+}
+
+QProgressBar {
+    background-color: #2B2D42;
+    border: 2px solid #595F85;
+    border-radius: 6px;
+    min-height: 18px;
+    max-height: 18px;
+}
+
+QProgressBar::chunk {
+    background-color: #0072B2;
+    border-radius: 4px;
 }

@@ -97,6 +97,7 @@ def medir_escenario(escenario: str, segundos: float, serie: bool):
     ventana._ir_a(1)  # Navegación: la vista que usa la cámara
     cuadros = [0]
     if ventana.hilo:
+        ventana.hilo.calibracion.omitida = True  # se mide el uso normal, no la calibración inicial
         ventana.hilo.fotograma.connect(lambda *_: cuadros.__setitem__(0, cuadros[0] + 1))
 
     inicio = {}

@@ -37,7 +37,7 @@ sillodromo/
 ├── BENCHMARK.md                # Uso de CPU, memoria, hilos y procesos; hallazgos y recomendaciones
 ├── benchmark.py                # Repite las mediciones de BENCHMARK.md (macOS y Linux)
 └── app/
-    ├── main.py                 # Pantalla completa: Menú, Navegación (flecha según la cabeza) y Activadores (módulos)
+    ├── main.py                 # Pantalla completa: Menú, Navegación (flecha según la cabeza) y Activadores (dispositivo → acción)
     ├── voz.py                  # Texto a voz con pyttsx3 (botones del módulo Alexa 1)
     ├── camara.py               # Captura de cámara + detección de rostro con MediaPipe (en un hilo aparte)
     ├── modelos/face_landmarker.task  # Modelo de MediaPipe para la detección de rostro
@@ -124,14 +124,31 @@ docker compose up --build
 
 ---
 
+## Control con la cabeza (cruceta)
+
+La app se maneja por bloques. Girar la cabeza (izquierda, derecha, arriba o abajo) mueve la selección al bloque vecino, que se ilumina en ámbar. Cada giro cuenta una sola vez: hay que volver al centro antes del siguiente. **Abrir la boca** pulsa el bloque seleccionado. Los ojos no se usan.
+
+Las perillas de calibración (`UMBRAL_GIRO`, `BOCA_ABIERTA`, `BOCA_CERRADA`, `CUADROS_ESTABLES`) están en `app/camara.py`.
+
+## Calibración inicial
+
+Con cámara, la app arranca calibrando (unos 25 s) antes de mostrar el menú. Cada paso muestra la instrucción en texto grande, una flecha hacia dónde girar y una barra de progreso. El tiempo de cada paso solo corre mientras la cámara ve la cara.
+
+1. **Iluminación.** Se revisa una sola vez. Si la imagen está oscura o tiene poco contraste, se calcula CLAHE una vez y su efecto se aplica después a cada cuadro como una curva fija (`cv2.LUT`), que es casi gratis. Con buena luz no se corrige nada.
+2. **Centro.** Unos segundos mirando al frente fijan la postura de reposo del usuario y su boca cerrada.
+3. **Rangos.** Girar a la izquierda, a la derecha, arriba y abajo tanto como se pueda, volviendo al centro entre cada uno. Cada dirección se activa con el 30 % de lo que el usuario alcanza (`FRACCION_RANGO`). Si no hay movimiento suficiente hacia un lado, se avisa en pantalla y esa dirección usa el valor por defecto.
+4. **Boca.** Abrirla todo lo posible fija cuánto debe abrirse para pulsar.
+
+`Esc` omite la calibración y usa los valores por defecto. El resultado se imprime en la terminal. Las perillas de calibración (`FRACCION_RANGO`, `UMBRAL_MINIMO`, `LUZ_MINIMA`, `CONTRASTE_MINIMO`, etc.) están en `app/camara.py`.
+
 ## Atajos de Teclado de Accesibilidad
 
 | Tecla / Atajo | Acción |
 | :--- | :--- |
 | `Tab` | Avanzar al siguiente elemento interactivo |
 | `Shift + Tab` | Retroceder al elemento interactivo anterior |
-| `Espacio` / `Enter` | Activar el botón o casilla seleccionada |
-| `Flechas Izquierda/Derecha` | Cambiar de vista con la barra de pestañas enfocada |
+| `Espacio` | Pulsar el bloque seleccionado (igual que abrir la boca) |
+| `Flechas` | Mover la selección al bloque vecino (igual que girar la cabeza) |
 
 ---
 

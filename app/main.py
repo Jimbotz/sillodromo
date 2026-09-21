@@ -1,26 +1,31 @@
 """
 main.py - Sillódromo: aplicación de escritorio PyQt5 a pantalla completa.
 Menú con dos vistas: Navegación (flecha según la dirección de la cabeza, detectada con la
-cámara y MediaPipe) y Activadores (módulos con sus botones y el estado de los dispositivos).
+cámara y MediaPipe) y Activadores, por fases: primero se elige el dispositivo y después la acción.
 La imagen de la cámara no se muestra al usuario final; ver VISTA_PREVIA.
+Todo se maneja como bloques con la cruceta de la cabeza (camara.Cruceta): girar mueve la
+selección al bloque vecino, que se ilumina, y abrir la boca lo pulsa. Las flechas del teclado
+hacen lo mismo que girar la cabeza. Al arrancar con cámara se calibra primero (luz, reposo, rangos
+de giro y apertura de la boca; ver camara.Calibracion); Esc la omite.
 Funciona en Windows, macOS y Linux (nativo o en Docker vía X11).
 """
 
 import os
 import sys
 
-from PyQt5.QtCore import QPointF, QRectF, Qt
-from PyQt5.QtGui import QColor, QImage, QPainter, QPainterPath, QPen, QPolygonF
+from PyQt5.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer
+from PyQt5.QtGui import QColor, QImage, QKeySequence, QPainter, QPainterPath, QPen, QPolygonF
 from PyQt5.QtWidgets import (
     QApplication,
-    QButtonGroup,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QProgressBar,
     QPushButton,
     QScrollArea,
+    QShortcut,
     QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
@@ -53,6 +58,13 @@ GENEROS = {"Alexa 1": ["cumbia", "salsa", "reguetón", "rock", "banda", "corrido
 VISTA_PREVIA = os.environ.get("SILLODROMO_VISTA_PREVIA") == "1"
 # Ángulo de la flecha de navegación (0 = hacia arriba, sentido horario)
 ANGULOS = {"arriba": 0, "derecha": 90, "abajo": 180, "izquierda": 270}
+# Dirección de cada gesto de la cruceta en pantalla (x hacia la derecha, y hacia abajo)
+VECTORES = {"izquierda": (-1, 0), "derecha": (1, 0), "arriba": (0, -1), "abajo": (0, 1)}
+
+
+def primer_bloque(contenedor: QWidget) -> QPushButton:
+    """Primer botón visible dentro del contenedor (orden de creación)."""
+    return next(b for b in contenedor.findChildren(QPushButton) if b.isVisible())
 
 
 def _llenar(boton: QPushButton) -> QPushButton:
@@ -183,11 +195,12 @@ class VentanaPrincipal(QMainWindow):
         self.resize(1100, 700)
         self.setMinimumSize(900, 560)
 
-        # Vistas generales: 0 menú, 1 navegación, 2 activadores
+        # Vistas generales: 0 menú, 1 navegación, 2 activadores, 3 calibración
         self.vistas = QStackedWidget(self)
         self.vistas.addWidget(self._crear_menu())
         self.vistas.addWidget(self._crear_navegacion())
         self.vistas.addWidget(self._crear_activadores())
+        self.vistas.addWidget(self._crear_calibracion())
         self.setCentralWidget(self.vistas)
 
         self.hilo = None
@@ -197,12 +210,65 @@ class VentanaPrincipal(QMainWindow):
             self.hilo = HiloCamara(self, con_imagen=VISTA_PREVIA)
             self.hilo.fotograma.connect(self._nuevo_fotograma)
             self.hilo.error.connect(self._error_camara)
+            self.hilo.gesto.connect(self._gesto)
+            self.hilo.calibrando.connect(self._calibrando)
+            self.hilo.calibrado.connect(self._calibrado)
+            self.vistas.setCurrentIndex(3)  # con cámara, arranca calibrando
             self.hilo.start()
+            # Esc: omitir la calibración (valores por defecto), p. ej. si otra persona configura la silla
+            QShortcut(QKeySequence(Qt.Key_Escape), self, lambda: setattr(self.hilo.calibracion, "omitida", True))
+
+        # Las flechas del teclado hacen lo mismo que girar la cabeza (pruebas sin cámara o pulsadores)
+        for tecla, gesto in ((Qt.Key_Left, "izquierda"), (Qt.Key_Right, "derecha"),
+                             (Qt.Key_Up, "arriba"), (Qt.Key_Down, "abajo")):
+            QShortcut(QKeySequence(tecla), self, lambda g=gesto: self._gesto(g))
+
+    def _gesto(self, gesto: str):
+        """Cruceta: una dirección selecciona el bloque vecino en esa dirección; "pulsar" lo activa."""
+        bloques = [b for b in self.vistas.currentWidget().findChildren(QPushButton) if b.isVisible() and b.isEnabled()]
+        if not bloques:
+            return  # p. ej. en la pantalla de calibración
+        actual = self.focusWidget()
+        if actual not in bloques:
+            bloques[0].setFocus()  # sin selección, cualquier gesto selecciona el primer bloque
+            return
+        if gesto == "pulsar":
+            actual.animateClick()  # se ve hundirse un instante antes de actuar
+            return
+        dx, dy = VECTORES[gesto]
+        caja = lambda w: QRect(w.mapToGlobal(QPoint(0, 0)), w.size())
+        aqui = caja(actual)
+        mejor, menor = None, None
+        for bloque in bloques:
+            otro = caja(bloque)
+            # Solo cuenta si queda entero más allá del borde en esa dirección: un botón ancho
+            # de la fila de arriba no está "a la derecha" aunque su centro lo esté.
+            mas_alla = {(1, 0): otro.left() > aqui.right(), (-1, 0): otro.right() < aqui.left(),
+                        (0, 1): otro.top() > aqui.bottom(), (0, -1): otro.bottom() < aqui.top()}
+            if not mas_alla[(dx, dy)]:
+                continue
+            d = otro.center() - aqui.center()
+            avance = d.x() * dx + d.y() * dy
+            # prefiere el vecino alineado antes que uno más cercano en diagonal
+            puntaje = avance + 2 * abs(d.x() * dy - d.y() * dx)
+            if menor is None or puntaje < menor:
+                mejor, menor = bloque, puntaje
+        if mejor is None:
+            return  # ya está en el borde: no da la vuelta
+        mejor.setFocus()
+        zona = mejor.parentWidget()
+        while zona is not None and not isinstance(zona, QScrollArea):
+            zona = zona.parentWidget()
+        if zona is not None:
+            zona.ensureWidgetVisible(mejor)
 
     def _ir_a(self, indice: int):
+        if indice == 2:
+            self.fases.setCurrentIndex(0)  # Activadores siempre empieza eligiendo el dispositivo
         self.vistas.setCurrentIndex(indice)
-        # Llevar el foco a la vista nueva para seguir navegando con el teclado
-        self.vistas.currentWidget().findChild(QPushButton).setFocus()
+        # Llevar la selección a la vista nueva para seguir con la cruceta o el teclado;
+        # en Activadores, al primer dispositivo en vez de a "Volver al menú"
+        (self.botones_dispositivo[0] if indice == 2 else primer_bloque(self.vistas.currentWidget())).setFocus()
 
     def _boton_volver(self, parent) -> QPushButton:
         boton = QPushButton("Volver al menú", parent)
@@ -251,54 +317,128 @@ class VentanaPrincipal(QMainWindow):
         return vista
 
     def _crear_activadores(self) -> QWidget:
-        vista = QWidget()
-        layout = QVBoxLayout(vista)
-        layout.setContentsMargins(20, 12, 20, 0)
+        # Por fases: página 0 = elegir dispositivo; página 1 + i = acciones del dispositivo i
+        self.fases = QStackedWidget()
+        self.botones_dispositivo = []
+        self.fases.addWidget(self._crear_fase_dispositivos())
+        for i, nombre in enumerate(MODULOS):
+            self.fases.addWidget(self._crear_fase_acciones(i, nombre))
+        return self.fases
+
+    def _crear_fase_dispositivos(self) -> QWidget:
+        fase = QWidget()
+        layout = QVBoxLayout(fase)
+        layout.setContentsMargins(20, 12, 20, 20)
+        layout.setSpacing(14)
 
         fila = QHBoxLayout()
-        fila.addWidget(self._boton_volver(vista))
+        fila.addWidget(self._boton_volver(fase))
         fila.addStretch(1)
 
-        layout.addLayout(fila)
-        layout.addWidget(self._crear_panel_modulos(), 1)
-        return vista
+        titulo = QLabel("Elige un dispositivo", fase)
+        titulo.setObjectName("tituloVista")
 
-    def _crear_panel_modulos(self) -> QWidget:
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(20, 20, 20, 20)
-
-        barra = QHBoxLayout()
-        pila = QStackedWidget(panel)
-        grupo = QButtonGroup(panel)  # exclusivo: solo un módulo marcado a la vez
+        bloques = QHBoxLayout()
+        bloques.setSpacing(14)
         for i, nombre in enumerate(MODULOS):
-            boton = QPushButton(nombre, panel)
-            boton.setCheckable(True)
-            boton.setAccessibleName(f"Ir al módulo {i + 1}: {nombre}")
-            grupo.addButton(boton, i)
-            barra.addWidget(boton)
-            pila.addWidget(crear_vista(f"Módulo {i + 1}: {nombre}", FRASES.get(nombre, ()), GENEROS.get(nombre, ())))
-        grupo.button(0).setChecked(True)
-        grupo.idClicked.connect(pila.setCurrentIndex)
-
-        separador = QFrame(panel)
-        separador.setObjectName("separador")
+            boton = _llenar(QPushButton(nombre, fase))
+            boton.setAccessibleName(f"Elegir dispositivo {i + 1}: {nombre}")
+            boton.clicked.connect(lambda _, i=i: self._abrir_dispositivo(i))
+            bloques.addWidget(boton)
+            self.botones_dispositivo.append(boton)
 
         fila_estado = QHBoxLayout()
         fila_estado.addWidget(crear_estado_dispositivos())
         fila_estado.addStretch(1)
 
-        layout.addLayout(barra)
-        layout.addWidget(separador)
+        layout.addLayout(fila)
+        layout.addWidget(titulo)
+        layout.addLayout(bloques, 1)
+        layout.addLayout(fila_estado)
+        return fase
+
+    def _crear_fase_acciones(self, i: int, nombre: str) -> QWidget:
+        fase = QWidget()
+        layout = QVBoxLayout(fase)
+        layout.setContentsMargins(20, 12, 20, 20)
+
+        volver = QPushButton("Volver a dispositivos", fase)
+        volver.setAccessibleName(f"Volver a elegir dispositivo (ahora: {nombre})")
+        volver.clicked.connect(lambda: self._volver_a_dispositivos(i))
+        fila = QHBoxLayout()
+        fila.addWidget(volver)
+        fila.addStretch(1)
+
         # Desplazamiento en vez de aplastar los botones cuando la lista de géneros está abierta
-        desplazable = QScrollArea(panel)
-        desplazable.setWidget(pila)
+        desplazable = QScrollArea(fase)
+        desplazable.setWidget(crear_vista(f"Módulo {i + 1}: {nombre}", FRASES.get(nombre, ()), GENEROS.get(nombre, ())))
         desplazable.setWidgetResizable(True)
         desplazable.setFrameShape(QFrame.NoFrame)
         desplazable.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        layout.addLayout(fila)
         layout.addWidget(desplazable, 1)
-        layout.addLayout(fila_estado)
-        return panel
+        return fase
+
+    def _abrir_dispositivo(self, i: int):
+        self.fases.setCurrentIndex(1 + i)
+        # La selección cae en la primera acción, no en "Volver": es lo que se va a usar
+        primer_bloque(self.fases.currentWidget().findChild(QScrollArea)).setFocus()
+
+    def _volver_a_dispositivos(self, i: int):
+        self.fases.setCurrentIndex(0)
+        self.botones_dispositivo[i].setFocus()  # vuelve al dispositivo del que venía
+
+    def _crear_calibracion(self) -> QWidget:
+        vista = QWidget()
+        layout = QVBoxLayout(vista)
+        layout.setContentsMargins(40, 30, 40, 30)
+        layout.setSpacing(16)
+
+        titulo = QLabel("Calibración", vista)
+        titulo.setObjectName("tituloTarjeta")
+
+        self.lbl_instruccion = QLabel("Preparando la cámara...", vista)
+        self.lbl_instruccion.setObjectName("instruccion")
+        self.lbl_instruccion.setAlignment(Qt.AlignCenter)
+        self.lbl_instruccion.setWordWrap(True)
+
+        # La flecha señala hacia dónde girar; el texto siempre dice lo mismo con palabras
+        self.guia_calibracion = VistaCamara(vista, flecha=True)
+        self.guia_calibracion.setAccessibleName("Hacia dónde girar la cabeza")
+
+        self.barra_calibracion = QProgressBar(vista)
+        self.barra_calibracion.setRange(0, 1000)
+        self.barra_calibracion.setTextVisible(False)
+
+        ayuda = QLabel("Esc: omitir la calibración y usar los valores por defecto", vista)
+        ayuda.setAlignment(Qt.AlignCenter)
+
+        layout.addWidget(titulo)
+        layout.addWidget(self.lbl_instruccion)
+        layout.addWidget(self.guia_calibracion, 1)
+        layout.addWidget(self.barra_calibracion)
+        layout.addWidget(ayuda)
+        return vista
+
+    def _calibrando(self, paso: str, instruccion: str, progreso: float, hay_cara: bool):
+        if not hay_cara and paso != "luz":
+            instruccion += "\n(No veo tu cara: colócate frente a la cámara)"
+        self.lbl_instruccion.setText(instruccion)
+        flecha = paso if paso in ANGULOS else "centro" if paso in ("centro", "volver") else ""
+        self.guia_calibracion.set_imagen(None, flecha)
+        self.barra_calibracion.setValue(int(progreso * 1000))
+
+    def _calibrado(self, resumen: str, sin_calibrar: tuple):
+        print(f"Calibración lista. {resumen}", flush=True)  # para ajustar las perillas de camara.py
+        texto = "Calibración lista"
+        if sin_calibrar:
+            # Importante con movilidad reducida: esa dirección (o la boca) pedirá un movimiento mayor
+            texto += f"\nNo detecté movimiento suficiente en: {', '.join(sin_calibrar)}.\nSe usarán los valores por defecto."
+        self.lbl_instruccion.setText(texto)
+        self.guia_calibracion.set_imagen(None, "")
+        self.barra_calibracion.setValue(1000)
+        QTimer.singleShot(5000 if sin_calibrar else 1500, lambda: self.vistas.currentIndex() == 3 and self._ir_a(0))
 
     def _nuevo_fotograma(self, imagen: QImage, rostros: int, fps: float, direccion: str):
         self.camara_navegacion.set_imagen(imagen if VISTA_PREVIA else None, direccion)
@@ -306,6 +446,8 @@ class VentanaPrincipal(QMainWindow):
 
     def _error_camara(self, mensaje: str):
         self.lbl_direccion.setText(mensaje)
+        if self.vistas.currentIndex() == 3:  # sin cámara no hay nada que calibrar
+            self._ir_a(0)
 
     def closeEvent(self, evento):
         # Liberar la cámara antes de salir

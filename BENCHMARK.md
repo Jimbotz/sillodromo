@@ -34,9 +34,22 @@ Medición del 21 de septiembre de 2026, para saber qué corre hoy en Sillódromo
 | Cámara con vista previa | 33,6 % | 293 MB | 45 | 46,1 % | 240 MB | 48 |
 
 - **Cuadros procesados:** 30 por segundo en todos los escenarios con cámara, sin perder cuadros.
+- **Cruceta:** desde que se añadió la cruceta, la detección de la boca (`output_face_blendshapes`) está activada, y el uso normal en macOS sube de 18,7 % a 20,1 % de CPU (medido después, con el mismo script).
 - **Memoria en el tiempo** (macOS, uso normal, `--serie 60`): pasó de 201 MB a los 5 s a 207 MB a los 60 s, tras 1.805 cuadros. No hay fuga.
 - **Voz** (`--voz`): una frase de 2 partes ("Alexa" + orden) abre hasta 2 procesos a la vez, con 137 MB en total. Viven unos 3,9 s y no queda ninguno al terminar.
 - **Linux:** usa el doble de CPU que macOS con el mismo trabajo. En una Raspberry Pi será bastante más lento que en el M4; hay que medirlo allí antes de fijar cuántos cuadros por segundo procesar.
+
+## Calibración inicial y CLAHE
+
+`benchmark.py` omite la calibración inicial (equivale a pulsar `Esc`), así que mide el uso normal. La calibración usa lo mismo que el uso normal y no abre hilos ni procesos nuevos. Costo de la corrección de luz, en macOS con un cuadro de 1280×720:
+
+| Operación | Tiempo | CPU a 30 fps |
+|---|---|---|
+| Calcular la curva CLAHE (una sola vez, al inicio) | 3,9 ms | una vez |
+| Aplicar la curva a cada cuadro (`cv2.LUT`) | 0,18 ms | 0,5 % de un núcleo |
+| CLAHE completo en cada cuadro (lo que se evita) | 1,86 ms | 5,6 % de un núcleo |
+
+Con buena luz, corregir la imagen no ayuda y sube el uso normal de ~19 % a ~23 % de CPU: MediaPipe tarda más con la imagen retocada. Por eso la curva solo se aplica si al inicio el cuadro está oscuro (brillo medio < 60) o tiene poco contraste (desviación < 40). Con la foto de prueba oscurecida al 40 % y al 25 % sí se aplica, y la cara se detecta en todos los cuadros.
 
 ## Hallazgo: fuga de memoria de MediaPipe 1.0.1 en macOS (corregida)
 
