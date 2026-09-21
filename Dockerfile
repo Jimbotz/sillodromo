@@ -13,6 +13,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pyqt5 \
+    # Iconos SVG de la interfaz (QtSvg viene aparte en Debian)
+    python3-pyqt5.qtsvg \
     python3-pip \
     # MediaPipe carga libGLESv2 al iniciar, incluso con el delegado CPU
     libgles2 \

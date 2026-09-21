@@ -1,531 +1,201 @@
 /* ==========================================================================
-   styles.qss - Hoja de Estilos Accesible WCAG 2.1 AA / AAA
-   Optimizada para baja visión, fotofobia y daltonismo (Deuteranopía, Protanopía, Tritanopía)
+   styles.qss - Tema en blancos y azules atenuados (WCAG 2.1: texto AAA, controles 3:1)
+   Los valores vienen de palette.py (AccessibleColors); al cambiar uno, cambiar los dos.
+   Comprobar contrastes: python app/palette.py
    ========================================================================== */
 
-/* Reglas Globales y Tipografía Base */
 QWidget {
-    background-color: #1E1E24;
-    color: #F4F4F6;
-    font-size: 14px;
-    font-weight: 400;
-    line-height: 1.5;
-    selection-background-color: #0072B2;
+    background-color: #BFC9DA;              /* BG_WINDOW: azul grisáceo claro, sin deslumbrar */
+    color: #111B31;                         /* TEXT_PRIMARY: 10,3:1 */
+    font-size: 16px;
+    selection-background-color: #1D4C8F;
     selection-color: #FFFFFF;
 }
 
-/* Ventana Principal y Diálogos */
-QMainWindow, QDialog {
-    background-color: #1E1E24;
-}
-
-/* ==========================================================================
-   INDICADOR DE FOCO GLOBAL (Acceso por teclado - WCAG 2.4.7 Focus Visible)
-   ========================================================================== */
-QWidget:focus {
-    outline: none;
-    border: 3px solid #E69F00;
-}
-
-/* ==========================================================================
-   PANELES, TARJETAS Y CONTENEDORES
-   ========================================================================== */
-QFrame#cardFrame, QWidget#contentArea, QGroupBox {
-    background-color: #2B2D42;
-    border: 2px solid #595F85;
-    border-radius: 8px;
-    padding: 16px;
-    margin-top: 12px;
-}
-
-QGroupBox::title {
-    subcontrol-origin: margin;
-    subcontrol-position: top left;
-    padding: 2px 10px;
-    background-color: #363953;
-    border: 1px solid #595F85;
-    border-radius: 4px;
-    color: #F4F4F6;
-    font-weight: 600;
-    font-size: 15px;
-}
-
+/* ---------- Títulos y textos ---------- */
 QLabel#tituloVista {
-    font-size: 20px;
+    font-size: 26px;
     font-weight: 700;
 }
 
 QLabel#tituloTarjeta {
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 700;
 }
 
-/* Las etiquetas heredan el fondo de la ventana; dentro de tarjetas deben ser transparentes */
-QFrame#cardFrame QLabel {
+QLabel#instruccion {                        /* calibración: texto grande, se lee también en voz alta */
+    font-size: 32px;
+    font-weight: 700;
+    background-color: transparent;          /* no tapar los blancos de la calibración de pantalla */
+}
+
+QLabel#ayudaCalibracion {                   /* notas al pie: para quien acompaña */
     background-color: transparent;
+    color: #2B3650;                         /* TEXT_MUTED: 7,2:1 sobre el fondo */
+    font-size: 15px;
 }
 
-/* Módulo seleccionado en la barra superior */
-QPushButton:checked, QPushButton:checked:hover {
-    background-color: #0072B2;
-    border-color: #0072B2;
-    color: #FFFFFF;
-}
-
-
-
-/* ==========================================================================
-   CAMPOS DE TEXTO E INPUTS (QLineEdit, QTextEdit)
-   ========================================================================== */
-QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox {
-    background-color: #363953;
-    color: #F4F4F6;
-    border: 2px solid #595F85;
-    border-radius: 6px;
-    padding: 8px 12px;
-    min-height: 24px;
-    font-size: 14px;
-}
-
-QLineEdit:hover, QTextEdit:hover, QSpinBox:hover {
-    border: 2px solid #8E92AA;
-    background-color: #3E425E;
-}
-
-QLineEdit:focus, QTextEdit:focus, QSpinBox:focus {
-    border: 3px solid #E69F00;
-    background-color: #363953;
-}
-
-QLineEdit:disabled, QTextEdit:disabled, QSpinBox:disabled {
-    background-color: #282A3A;
-    color: #8E92AA;
-    border: 2px solid #3E425E;
-}
-
-/* ==========================================================================
-   BOTONES (QPushButton)
-   ========================================================================== */
+/* ---------- Bloques (todos los botones) ---------- */
 QPushButton {
-    background-color: #3E425E;
-    color: #F4F4F6;
-    border: 2px solid #595F85;
-    border-radius: 6px;
-    padding: 10px 18px;
-    min-height: 22px;
-    font-size: 14px;
+    background-color: #CFD8E6;              /* BG_BLOCK */
+    color: #111B31;                         /* 11,9:1 */
+    border: 2px solid #4B5B7E;              /* BORDER_DEFAULT: 4,1:1 frente al fondo */
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 22px;                        /* grande: los bloques se leen de lejos */
     font-weight: 600;
 }
 
 QPushButton:hover {
-    background-color: #4D5275;
-    border-color: #8E92AA;
+    background-color: #C3CEDF;              /* BG_HOVER */
 }
 
 QPushButton:pressed {
-    background-color: #2E3247;
-    border-color: #E69F00;
-}
-
-QPushButton:focus {
-    border: 3px solid #E69F00;
-}
-
-QPushButton:disabled {
-    background-color: #282A3A;
-    color: #8E92AA;
-    border-color: #3E425E;
-}
-
-/* Botón Primario de Acción */
-QPushButton#primaryBtn, QPushButton[accessibleRole="primary"] {
-    background-color: #0072B2;
+    background-color: #173F75;              /* SELECTED_PRESSED */
     color: #FFFFFF;
-    border: 2px solid #56B4E9;
 }
 
-QPushButton#primaryBtn:hover, QPushButton[accessibleRole="primary"]:hover {
-    background-color: #005A9C;
-    border-color: #80C8F2;
+QPushButton:disabled {                      /* mientras termina una acción */
+    background-color: #C8CFDB;
+    color: #56617B;
+    border-color: #A3AEC2;
 }
 
-QPushButton#primaryBtn:pressed, QPushButton[accessibleRole="primary"]:pressed {
-    background-color: #004578;
+QPushButton#volverBtn {                     /* en una esquina, pero grandes: se apuntan con la mirada */
+    min-height: 80px;
+    min-width: 320px;
+    font-size: 19px;
 }
 
-QPushButton#primaryBtn:focus, QPushButton[accessibleRole="primary"]:focus {
-    border: 3px solid #E69F00;
+/* ---------- Bloque seleccionado (cruceta o mirada): el bloque "se ilumina" ----------
+   Pasa de claro a azul oscuro, con texto blanco (8,5:1) y borde el doble de grueso: se nota por
+   luminosidad y por grosor, no solo por el tono. Va después de :hover para ganarle. */
+QPushButton:focus,
+QPushButton:focus:hover {
+    background-color: #1D4C8F;              /* SELECTED */
+    color: #FFFFFF;
+    border: 4px solid #0A2657;              /* SELECTED_BORDER */
+    font-weight: 700;
 }
 
-/* Botón de Peligro / Acción Destructiva */
-QPushButton#dangerBtn {
-    background-color: #631B1B;
-    color: #FFD1D1;
-    border: 2px solid #D55E00;
+/* ---------- Etiqueta de fila (p. ej. "Televisión 1" a la izquierda de sus bloques) ---------- */
+QLabel#etiquetaFila {
+    background-color: transparent;
+    font-size: 20px;
+    font-weight: 700;
 }
 
-QPushButton#dangerBtn:hover {
-    background-color: #7D2222;
-    border-color: #FF6B6B;
+/* ---------- Editor de comandos (para quien acompaña: controles de tamaño normal) ---------- */
+QPushButton#botonEditor,
+QMessageBox QPushButton {
+    font-size: 17px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    min-width: 90px;
 }
 
-QPushButton#dangerBtn:focus {
-    border: 3px solid #E69F00;
+QLabel#etiquetaCampo {
+    background-color: transparent;
+    font-size: 17px;
+    font-weight: 700;
 }
 
-/* ==========================================================================
-   DESPLEGABLES (QComboBox)
-   ========================================================================== */
-QComboBox {
-    background-color: #363953;
-    color: #F4F4F6;
-    border: 2px solid #595F85;
-    border-radius: 6px;
-    padding: 8px 12px;
-    min-height: 24px;
-    font-size: 14px;
+QLabel#errorCampo {                         /* el mensaje siempre dice qué falta: no depende del color */
+    background-color: transparent;
+    color: #6B0F0F;                         /* TEXT_ERROR: 7,4:1 */
+    font-size: 17px;
+    font-weight: 700;
 }
 
-QComboBox:hover {
-    border-color: #8E92AA;
-    background-color: #3E425E;
+QLineEdit, QComboBox, QListWidget {
+    background-color: #DDE4EF;              /* BG_SURFACE: texto 13,4:1 */
+    color: #111B31;
+    border: 2px solid #4B5B7E;              /* 4,1:1 frente al fondo */
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 18px;
 }
 
-QComboBox:focus {
-    border: 3px solid #E69F00;
+QLineEdit:focus, QComboBox:focus, QListWidget:focus {
+    border: 3px solid #0A2657;              /* foco visible y más grueso */
 }
 
-QComboBox::drop-down {
-    subcontrol-origin: padding;
-    subcontrol-position: top right;
-    width: 32px;
-    border-left: 2px solid #595F85;
-    background-color: #2B2D42;
-    border-top-right-radius: 4px;
-    border-bottom-right-radius: 4px;
+QListWidget::item {
+    padding: 8px;
 }
 
-QComboBox::down-arrow {
-    width: 0;
-    height: 0;
-    border-left: 6px solid transparent;
-    border-right: 6px solid transparent;
-    border-top: 8px solid #F4F4F6;
+QListWidget::item:selected,
+QComboBox QAbstractItemView {
+    selection-background-color: #1D4C8F;
+    selection-color: #FFFFFF;
+}
+
+QListWidget::item:selected {
+    background-color: #1D4C8F;              /* blanco sobre azul: 8,5:1 */
+    color: #FFFFFF;
 }
 
 QComboBox QAbstractItemView {
-    background-color: #2B2D42;
-    color: #F4F4F6;
-    border: 2px solid #595F85;
-    selection-background-color: #0072B2;
-    selection-color: #FFFFFF;
-    padding: 4px;
+    background-color: #DDE4EF;
+    color: #111B31;
 }
 
-QComboBox QAbstractItemView::item {
-    min-height: 32px;
-    padding: 4px 8px;
-}
-
-QComboBox QAbstractItemView::item:hover {
-    background-color: #363953;
-    color: #F4F4F6;
-}
-
-/* ==========================================================================
-   CASILLAS DE VERIFICACIÓN (QCheckBox) Y BOTONES DE OPCIÓN (QRadioButton)
-   ========================================================================== */
-QCheckBox, QRadioButton {
-    color: #F4F4F6;
-    spacing: 12px;
-    font-size: 14px;
-    min-height: 28px;
-}
-
-QCheckBox:focus, QRadioButton:focus {
-    border: 2px dashed #E69F00;
-    padding: 2px;
-}
-
-QCheckBox::indicator, QRadioButton::indicator {
-    width: 22px;
-    height: 22px;
-    background-color: #363953;
-    border: 2px solid #595F85;
-    border-radius: 4px;
-}
-
-QRadioButton::indicator {
-    border-radius: 11px;
-}
-
-QCheckBox::indicator:hover, QRadioButton::indicator:hover {
-    border-color: #E69F00;
-    background-color: #3E425E;
-}
-
-QCheckBox::indicator:checked {
-    background-color: #0072B2;
-    border: 2px solid #56B4E9;
-    image: none;
-}
-
-QCheckBox::indicator:checked:focus {
-    border: 2px solid #E69F00;
-}
-
-QRadioButton::indicator:checked {
-    background-color: #0072B2;
-    border: 4px solid #F4F4F6;
-}
-
-/* ==========================================================================
-   TABLAS Y LISTAS (QTableWidget, QListWidget)
-   ========================================================================== */
-QTableWidget, QListWidget {
-    background-color: #1E1E24;
-    alternate-background-color: #272A3C;
-    color: #F4F4F6;
-    gridline-color: #3E425E;
-    border: 2px solid #595F85;
-    border-radius: 6px;
-    font-size: 14px;
-}
-
-QTableWidget:focus, QListWidget:focus {
-    border: 3px solid #E69F00;
-}
-
-QTableWidget::item {
-    padding: 10px 8px;
-    border-bottom: 1px solid #363953;
-}
-
-QTableWidget::item:selected, QListWidget::item:selected {
-    background-color: #0072B2;
+QToolTip {
+    background-color: #111B31;
     color: #FFFFFF;
-    font-weight: 600;
+    border: 1px solid #0A2657;
+    font-size: 15px;
 }
 
-QTableWidget::item:focus {
-    border: 2px solid #E69F00;
+/* Selector de iconos: el elegido lleva borde grueso (no solo color). Con el foco pasa a fondo oscuro,
+   porque el icono se vuelve blanco al tener el foco. */
+QPushButton#opcionIcono {
+    min-width: 50px; max-width: 50px;
+    min-height: 50px; max-height: 50px;
+    padding: 4px;
+    border-radius: 8px;
 }
 
-QHeaderView::section {
-    background-color: #2B2D42;
-    color: #F4F4F6;
-    font-weight: 700;
-    font-size: 14px;
-    padding: 8px;
-    border: 1px solid #595F85;
-    border-top: none;
-    border-left: none;
+QPushButton#opcionIcono:checked {
+    background-color: #DDE4EF;
+    border: 4px solid #0A2657;
 }
 
-/* ==========================================================================
-   ALERTAS Y TARJETAS DE ESTADO (Notificaciones Accesibles)
-   ========================================================================== */
-QFrame.alertCard {
-    border-radius: 6px;
-    padding: 12px 16px;
-    margin: 6px 0;
+QPushButton#opcionIcono:checked:focus {
+    background-color: #1D4C8F;
 }
 
-/* Éxito: Verde azulado accesible + texto e icono explícito */
-QFrame#statusSuccess, QFrame.alert-success {
-    background-color: #103B32;
-    border: 2px solid #009E73;
-}
-QFrame#statusSuccess QLabel, QFrame.alert-success QLabel {
-    color: #A3F7DF;
-    background-color: transparent;
-    font-weight: 600;
-}
-
-/* Advertencia: Ámbar / Naranja accesible */
-QFrame#statusWarning, QFrame.alert-warning {
-    background-color: #4A3305;
-    border: 2px solid #E69F00;
-}
-QFrame#statusWarning QLabel, QFrame.alert-warning QLabel {
-    color: #FFE2A8;
-    background-color: transparent;
-    font-weight: 600;
-}
-
-/* Error: Bermellón / Rojo accesible */
-QFrame#statusError, QFrame.alert-error {
-    background-color: #471A1A;
-    border: 2px solid #D55E00;
-}
-QFrame#statusError QLabel, QFrame.alert-error QLabel {
-    color: #FFD1D1;
-    background-color: transparent;
-    font-weight: 600;
-}
-
-/* Información: Azul cielo */
-QFrame#statusInfo, QFrame.alert-info {
-    background-color: #11324D;
-    border: 2px solid #56B4E9;
-}
-QFrame#statusInfo QLabel, QFrame.alert-info QLabel {
-    color: #CBEBFC;
-    background-color: transparent;
-    font-weight: 600;
-}
-
-/* ==========================================================================
-   PESTAÑAS Y NAVEGACIÓN (QTabWidget, QTabBar)
-   ========================================================================== */
-QTabWidget::pane {
-    border: 2px solid #595F85;
-    background-color: #2B2D42;
-    border-radius: 0 0 6px 6px;
-    top: -2px;
-}
-
-QTabBar::tab {
-    background-color: #1E1E24;
-    color: #D8D8E0;
-    border: 2px solid #595F85;
-    border-bottom: none;
-    padding: 10px 20px;
-    min-width: 110px;
-    font-size: 14px;
-    margin-right: 4px;
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
-}
-
-QTabBar::tab:hover {
-    background-color: #363953;
-    color: #F4F4F6;
-}
-
-QTabBar::tab:selected {
-    background-color: #2B2D42;
-    color: #F4F4F6;
-    border-bottom: 3px solid #E69F00;
-}
-
-QTabBar::tab:focus {
-    border-top: 3px solid #E69F00;
-}
-
-/* ==========================================================================
-   BARRA DE ESTADO Y SCROLLBARS
-   ========================================================================== */
-QStatusBar {
-    background-color: #17171C;
-    color: #D8D8E0;
-    border-top: 2px solid #595F85;
-    font-size: 13px;
-    padding: 4px 8px;
-}
-
-QStatusBar::item {
-    border: none;
-}
-
-/* Barras de Desplazamiento Ergonómicas (14px de grosor mínimo) */
-QScrollBar:vertical {
-    background-color: #1E1E24;
-    width: 14px;
-    margin: 0px;
-    border: 1px solid #595F85;
-}
-
-QScrollBar::handle:vertical {
-    background-color: #595F85;
-    min-height: 30px;
-    border-radius: 4px;
-    margin: 2px;
-}
-
-QScrollBar::handle:vertical:hover {
-    background-color: #8E92AA;
-}
-
-QScrollBar::handle:vertical:pressed {
-    background-color: #E69F00;
-}
-
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-    height: 0px;
-}
-
-QScrollBar:horizontal {
-    background-color: #1E1E24;
-    height: 14px;
-    margin: 0px;
-    border: 1px solid #595F85;
-}
-
-QScrollBar::handle:horizontal {
-    background-color: #595F85;
-    min-width: 30px;
-    border-radius: 4px;
-    margin: 2px;
-}
-
-QScrollBar::handle:horizontal:hover {
-    background-color: #8E92AA;
-}
-
-QScrollBar::handle:horizontal:pressed {
-    background-color: #E69F00;
-}
-
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-    width: 0px;
-}
-
-/* ==========================================================================
-   BLOQUE SELECCIONADO POR LA CRUCETA
-   Se ilumina entero (no solo el borde) y el borde se vuelve marfil: el cambio se nota por
-   relleno y por borde, no solo por color. Va al final para ganar a :checked y :hover.
-   Texto #1E1E24 sobre #E69F00: contraste 7,36:1 (AAA).
-   ========================================================================== */
-QPushButton:focus,
-QPushButton:checked:focus,
-QPushButton:focus:hover,
-QPushButton#primaryBtn:focus,
-QPushButton#dangerBtn:focus {
-    background-color: #E69F00;
-    color: #1E1E24;
-    border: 3px solid #F4F4F6;
-}
-
-/* ==========================================================================
-   CALIBRACIÓN INICIAL
-   ========================================================================== */
-QLabel#instruccion {
-    font-size: 32px;
-    font-weight: 700;
-    background-color: transparent; /* no tapar los blancos de la calibración de pantalla */
-}
-
+/* ---------- Barra de progreso de la calibración ---------- */
 QProgressBar {
-    background-color: #2B2D42;
-    border: 2px solid #595F85;
+    background-color: #C9D2E1;              /* BG_GUIDE */
+    border: 2px solid #4B5B7E;
     border-radius: 6px;
     min-height: 18px;
     max-height: 18px;
 }
 
 QProgressBar::chunk {
-    background-color: #0072B2;
+    background-color: #1D4C8F;              /* 5,6:1 sobre la barra */
     border-radius: 4px;
 }
 
-QLabel#ayudaCalibracion {
-    background-color: transparent;
-    color: #B8B9C8;
+/* ---------- Desplazamiento (solo si algo no cabe) ---------- */
+QScrollArea {
+    border: none;
 }
 
-/* Botones de volver: en una esquina pero grandes, para apuntarlos con la mirada */
-QPushButton#volverBtn {
-    min-height: 80px;
-    min-width: 320px;
+QScrollBar:vertical {
+    background-color: #C9D2E1;
+    width: 14px;
+    border-radius: 7px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #4B5B7E;
+    min-height: 40px;
+    border-radius: 7px;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
 }

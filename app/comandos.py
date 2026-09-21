@@ -1,94 +1,150 @@
 """
-comandos.py - Comandos personalizados: bloques con un texto y la frase que se le dice a Alexa.
-Los escribe quien acompaña en un archivo JSON fuera del repo (actualizar la app no los borra):
+comandos.py - Comandos personalizados, agrupados por categorías, en app/datos/comandos.json.
+Se crean y editan desde la app (editor.py); este módulo solo lee, valida y guarda.
 
-    [
-      {"texto": "Buenas noches", "frase": "Alexa, buenas noches"},
-      {"texto": "Abrir persianas", "frase": "Alexa, abre las persianas"}
-    ]
+    {"categorias": [
+      {"nombre": "Solicitar atención", "icono": "hand",
+       "comandos": [{"titulo": "Ir al baño", "frase": "Por favor, llévenme al baño", "icono": "toilet"}]}
+    ]}
 
-Lo que hace cada frase se configura en la app de Alexa (Rutinas); aquí solo se dice.
+La frase es exactamente lo que dice la voz. Si empieza por "Alexa", voz.hablar hace la pausa de 1 s
+tras "Alexa" para que el altavoz se active (lo que haga la orden se configura en las Rutinas de Alexa).
 """
 
 import json
 import os
 import re
 
-RUTA = os.path.join(os.path.expanduser("~"), ".sillodromo", "comandos.json")
-MAXIMO = 12  # 3 filas de 4: los bloques siguen siendo grandes para la mirada
+import icono
+
+RUTA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "datos", "comandos.json")
+MAXIMO = 12  # comandos por categoría: 3 filas de 4, bloques aún grandes para la mirada
 EJEMPLO = [
-    {"texto": "Buenas noches", "frase": "Alexa, buenas noches"},
-    {"texto": "Abrir persianas", "frase": "Alexa, abre las persianas"},
-    {"texto": "¿Qué hora es?", "frase": "Alexa, qué hora es"},
+    {"nombre": "Solicitar atención", "icono": "hand", "comandos": [
+        {"titulo": "Ir al baño", "frase": "Por favor, llévenme al baño", "icono": "toilet"},
+        {"titulo": "Tengo sed", "frase": "Tengo sed, ¿me pueden dar agua, por favor?", "icono": "glass-water"},
+        {"titulo": "Tengo hambre", "frase": "Tengo hambre, ¿me pueden dar de comer, por favor?", "icono": "utensils"},
+        {"titulo": "Me duele algo", "frase": "Me duele algo, necesito ayuda, por favor", "icono": "heart-pulse"},
+        {"titulo": "Quiero descansar", "frase": "Quiero descansar, ¿me pueden llevar a la cama?", "icono": "bed"},
+        {"titulo": "Ven, por favor", "frase": "¿Puede venir alguien, por favor?", "icono": "bell-ring"},
+    ]},
+    {"nombre": "Casa", "icono": "house", "comandos": [
+        {"titulo": "Buenas noches", "frase": "Alexa, buenas noches", "icono": "moon"},
+        {"titulo": "¿Qué hora es?", "frase": "Alexa, qué hora es", "icono": "clock"},
+    ]},
 ]
 
 
 def normalizar_frase(frase: str) -> str:
-    """Deja la frase como "Alexa, <orden>": voz.hablar parte ahí para la pausa de 1 s."""
-    resto = re.sub(r"^\s*alexa\b[\s,.:]*", "", frase, flags=re.IGNORECASE).strip()
-    return f"Alexa, {resto}"
+    """Recorta espacios y, si empieza por "Alexa", la deja como "Alexa, <orden>" (voz.hablar parte ahí).
+    No añade "Alexa": una frase para una persona ("Por favor, llévenme al baño") se dice tal cual."""
+    frase = " ".join(frase.split())
+    if re.match(r"alexa\b", frase, flags=re.IGNORECASE):
+        return "Alexa, " + re.sub(r"^alexa\b[\s,.:]*", "", frase, flags=re.IGNORECASE)
+    return frase
 
 
-def cargar(ruta: str = RUTA) -> tuple:
-    """Devuelve ([(texto, frase), ...], aviso). Nunca lanza: un archivo mal escrito no debe
-    impedir que la app arranque; el problema se explica en el aviso. Si no existe, se crea con EJEMPLO."""
+def _texto(valor) -> str:
+    return " ".join(valor.split()) if isinstance(valor, str) else ""
+
+
+def _icono(valor, disponibles) -> str:
+    return valor if valor in disponibles else icono.POR_DEFECTO
+
+
+def validar(datos) -> tuple:
+    """(categorias limpias, cuántos elementos se descartaron). Acepta también el formato antiguo:
+    una lista de {"texto", "frase"}, que pasa a una categoría "Comandos"."""
+    disponibles = set(icono.catalogo())
+    if isinstance(datos, list):  # formato antiguo
+        datos = {"categorias": [{"nombre": "Comandos", "icono": icono.POR_DEFECTO,
+                                 "comandos": [{"titulo": d.get("texto"), "frase": d.get("frase")}
+                                              for d in datos if isinstance(d, dict)]}]}
+    categorias, descartados = [], 0
+    for c in datos.get("categorias", []) if isinstance(datos, dict) else []:
+        nombre = _texto(c.get("nombre")) if isinstance(c, dict) else ""
+        if not nombre:
+            descartados += 1
+            continue
+        comandos = []
+        for d in c.get("comandos", []) if isinstance(c.get("comandos"), list) else []:
+            titulo = _texto(d.get("titulo")) if isinstance(d, dict) else ""
+            frase = normalizar_frase(d["frase"]) if isinstance(d, dict) and isinstance(d.get("frase"), str) else ""
+            if not titulo or frase in ("", "Alexa, "):
+                descartados += 1
+                continue
+            comandos.append({"titulo": titulo, "frase": frase, "icono": _icono(d.get("icono"), disponibles)})
+        categorias.append({"nombre": nombre, "icono": _icono(c.get("icono"), disponibles), "comandos": comandos})
+    return categorias, descartados
+
+
+def cargar(ruta: str = None) -> tuple:
+    """(categorias, aviso). Nunca lanza: un archivo dañado no debe impedir que la app arranque (el
+    problema se explica en el aviso). Si no existe, se crea con EJEMPLO."""
+    ruta = ruta or RUTA
     try:
         if not os.path.exists(ruta):
-            os.makedirs(os.path.dirname(ruta), exist_ok=True)
-            with open(ruta, "w", encoding="utf-8") as f:
-                json.dump(EJEMPLO, f, ensure_ascii=False, indent=2)
+            guardar(EJEMPLO, ruta)
         with open(ruta, encoding="utf-8") as f:
             datos = json.load(f)
     except (OSError, ValueError) as e:
         return [], f"No pude leer los comandos ({e})."
-    if not isinstance(datos, list):
-        return [], "El archivo de comandos debe ser una lista: [ {\"texto\": ..., \"frase\": ...}, ... ]."
+    categorias, descartados = validar(datos)
+    aviso = f"Se ignoraron {descartados} comandos o categorías sin nombre o sin frase." if descartados else ""
+    return categorias, aviso
 
-    comandos, descartados = [], 0
-    for d in datos:
-        texto, frase = (d.get("texto"), d.get("frase")) if isinstance(d, dict) else (None, None)
-        if not (isinstance(texto, str) and isinstance(frase, str) and texto.strip() and normalizar_frase(frase) != "Alexa, "):
-            descartados += 1
-            continue
-        comandos.append((texto.strip(), normalizar_frase(frase)))
 
-    avisos = []
-    if descartados:
-        avisos.append(f"Se ignoraron {descartados} comandos mal escritos (falta \"texto\" o \"frase\").")
-    if len(comandos) > MAXIMO:
-        avisos.append(f"Se muestran los primeros {MAXIMO} de {len(comandos)}.")
-        comandos = comandos[:MAXIMO]
-    return comandos, " ".join(avisos)
+def guardar(categorias: list, ruta: str = None) -> bool:
+    """Escribe en un temporal y lo renombra: un corte a medias no deja el archivo roto."""
+    ruta = ruta or RUTA
+    try:
+        os.makedirs(os.path.dirname(ruta), exist_ok=True)
+        with open(ruta + ".tmp", "w", encoding="utf-8") as f:
+            json.dump({"categorias": categorias}, f, ensure_ascii=False, indent=2)
+        os.replace(ruta + ".tmp", ruta)
+        return True
+    except OSError as e:
+        print(f"No pude guardar los comandos ({e})", flush=True)
+        return False
 
 
 if __name__ == "__main__":
     import tempfile
 
-    assert normalizar_frase("abre las persianas") == "Alexa, abre las persianas"
+    assert normalizar_frase("  Por favor,   llévenme al baño ") == "Por favor, llévenme al baño"  # sin "Alexa"
     assert normalizar_frase("alexa abre la puerta") == "Alexa, abre la puerta"
     assert normalizar_frase("Alexa, buenas noches") == "Alexa, buenas noches"
-    assert normalizar_frase("Alexandra, hola") == "Alexa, Alexandra, hola"  # solo la palabra "Alexa"
+    assert normalizar_frase("Alexandra, hola") == "Alexandra, hola"  # solo la palabra "Alexa"
+
+    faltantes = {i for c in EJEMPLO for i in [c["icono"]] + [d["icono"] for d in c["comandos"]]} - set(icono.catalogo())
+    assert not faltantes, f"iconos del ejemplo que no existen: {faltantes}"
 
     with tempfile.TemporaryDirectory() as carpeta:
-        ruta = os.path.join(carpeta, "sub", "comandos.json")
-        comandos, aviso = cargar(ruta)  # no existe: se crea con el ejemplo
-        assert os.path.exists(ruta) and len(comandos) == len(EJEMPLO) and aviso == ""
+        ruta = os.path.join(carpeta, "datos", "comandos.json")
+        categorias, aviso = cargar(ruta)  # no existe: se crea con el ejemplo
+        assert os.path.exists(ruta) and aviso == "" and [c["nombre"] for c in categorias] == ["Solicitar atención", "Casa"]
+        assert categorias[0]["comandos"][0] == {"titulo": "Ir al baño", "frase": "Por favor, llévenme al baño", "icono": "toilet"}
+
+        categorias[0]["comandos"].append({"titulo": "Llamar a mamá", "frase": "Quiero hablar con mi mamá", "icono": "phone"})
+        assert guardar(categorias, ruta) and cargar(ruta)[0] == categorias  # ida y vuelta
+
+        with open(ruta, "w", encoding="utf-8") as f:  # formato antiguo: lista suelta
+            json.dump([{"texto": "Buenas noches", "frase": "alexa buenas noches"}, {"texto": "Sin frase"}], f)
+        categorias, aviso = cargar(ruta)
+        assert categorias == [{"nombre": "Comandos", "icono": icono.POR_DEFECTO,
+                               "comandos": [{"titulo": "Buenas noches", "frase": "Alexa, buenas noches", "icono": icono.POR_DEFECTO}]}]
+        assert "Se ignoraron 1" in aviso
+
+        with open(ruta, "w", encoding="utf-8") as f:  # nombres vacíos, icono inexistente, basura
+            json.dump({"categorias": [{"nombre": " "}, "x", {"nombre": "A", "icono": "no-existe",
+                                                               "comandos": [{"titulo": "T", "frase": "Hola", "icono": "nada"}, 5]}]}, f)
+        categorias, aviso = cargar(ruta)
+        assert categorias == [{"nombre": "A", "icono": icono.POR_DEFECTO,
+                               "comandos": [{"titulo": "T", "frase": "Hola", "icono": icono.POR_DEFECTO}]}]
+        assert "Se ignoraron 3" in aviso
 
         with open(ruta, "w", encoding="utf-8") as f:
-            f.write("[{\"texto\": \"Luz\", ")  # JSON roto: no lanza
-        comandos, aviso = cargar(ruta)
-        assert comandos == [] and aviso.startswith("No pude leer")
-
-        with open(ruta, "w", encoding="utf-8") as f:
-            json.dump({"texto": "x"}, f)
-        assert cargar(ruta)[0] == [] and "lista" in cargar(ruta)[1]
-
-        malos = [{"texto": "Sin frase"}, {"frase": "Alexa, sin texto"}, "no es un objeto", {"texto": " ", "frase": "x"},
-                 {"texto": "Solo Alexa", "frase": "Alexa"}]
-        buenos = [{"texto": f"C{n}", "frase": f"orden {n}"} for n in range(MAXIMO + 3)]
-        with open(ruta, "w", encoding="utf-8") as f:
-            json.dump(malos + buenos, f)
-        comandos, aviso = cargar(ruta)
-        assert len(comandos) == MAXIMO and comandos[0] == ("C0", "Alexa, orden 0")
-        assert "Se ignoraron 5" in aviso and f"primeros {MAXIMO} de {MAXIMO + 3}" in aviso
+            f.write("{roto")
+        categorias, aviso = cargar(ruta)
+        assert categorias == [] and aviso.startswith("No pude leer")
     print("comandos: OK")

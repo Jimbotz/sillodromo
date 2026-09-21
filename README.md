@@ -6,23 +6,13 @@ Aplicación de escritorio desarrollada en **Python** con **PyQt5**, totalmente c
 
 ## Criterios de Diseño Accesible y Sistema de Color
 
-1. **Modo Oscuro Suave Anti-Fatiga**:
-   - Evita el negro puro (`#000000`) y el blanco puro (`#FFFFFF`) para prevenir el efecto halo generado por astigmatismo y reducir el cansancio visual.
-   - **Fondo de ventana**: Carbón suave `#1E1E24`.
-   - **Superficies y Paneles**: `#2B2D42`.
-   - **Texto Principal**: Marfil suave `#F4F4F6` (Ratio de contraste **14.6:1**, superando holgadamente el umbral AAA de 7.0:1).
-2. **Paleta Inclusiva para Daltonismo (Basada en Okabe-Ito)**:
-   - **Regla Fundamental**: Ningún estado o alerta depende únicamente del color. Cada componente combina **Icono de texto + Color + Etiqueta explicativa**.
-   - **Acción Principal**: Azul Cobalto `#0072B2` con texto blanco `#FFFFFF` (Ratio > 4.7:1, cumple AA).
-   - **Indicador de Foco**: Ámbar / Dorado `#E69F00` (Grosor de 3px de alto impacto visual, ratio > 7.5:1).
-   - **Éxito**: Verde Azulado `#009E73` con badge textual `[✓] ÉXITO:`.
-   - **Advertencia**: Ámbar `#E69F00` con badge textual `[!] ADVERTENCIA:`.
-   - **Error**: Bermellón `#D55E00` con badge textual `[✖] ERROR:`.
-   - **Información**: Azul Cielo `#56B4E9` con badge textual `[ℹ] INFORMACIÓN:`.
-3. **Ergonomía y Navegación por Teclado**:
-   - Indicador de foco visual evidente (`border: 3px solid #E69F00`) en todos los controles interactivos en estado `:focus`.
-   - Orden secuencial de tabulación (`Tab` / `Shift+Tab`) en todos los formularios y vistas.
-   - Áreas de interacción aumentadas (inputs de 40px+ de alto y casillas de verificación de 22x22px).
+Tema claro en blancos y azules. Los colores están en `app/palette.py`, y `python app/palette.py` comprueba el contraste de cada par que aparece en la interfaz.
+
+1. **Claro, pero atenuado.** El fondo es un azul grisáceo (`#BFC9DA`), que refleja un 37 % menos de luz que un blanco casi puro, y el texto es un azul casi negro (`#111B31`). Nunca se usan blanco ni negro puros: hay menos deslumbramiento, menos molestia con fotofobia y menos halo con astigmatismo. El texto de los bloques es grande (22 px) porque se lee de lejos.
+2. **Contraste medido.** Todo el texto tiene nivel **AAA**, 7:1 o más sobre su fondo; el texto de los bloques llega a 11,9:1. Los bordes de los bloques tienen 4,1:1 frente al fondo (WCAG 1.4.11 pide 3:1), así que se ve dónde empieza cada bloque.
+3. **Selección que no depende del tono.** El bloque seleccionado (con la cruceta o la mirada) pasa de azul claro a **azul oscuro `#1D4C8F` con texto blanco** (8,5:1) y **borde el doble de grueso**. Se distingue por luminosidad y por grosor, así que funciona igual con cualquier tipo de daltonismo, tritanopía incluida. Encima, la barra de permanencia es clara (7,8:1) y el puntero tiene contorno oscuro y centro claro, para verse sobre cualquier fondo.
+4. **Estados con texto.** Nada se comunica solo con color: mientras una acción está en curso, los bloques se atenúan **y** aparece el aviso "Espera a que termine la acción". En la calibración, la flecha siempre va con la instrucción escrita y hablada.
+5. **Iconos vectoriales, sin emojis.** Cada bloque lleva un icono de [Lucide](https://lucide.dev) (licencia ISC, en `app/iconos/`), que siempre acompaña al texto y nunca lo sustituye. El icono toma el color del texto: oscuro en reposo, blanco en el bloque seleccionado y gris mientras una acción está en curso. Cada bloque tiene además un nombre accesible con su dispositivo, por ejemplo "Televisiones, Televisión 2: YouTube".
 
 ---
 
@@ -38,7 +28,11 @@ sillodromo/
 ├── benchmark.py                # Repite las mediciones de BENCHMARK.md (macOS y Linux)
 └── app/
     ├── main.py                 # Pantalla completa: Menú, Navegación (flecha según la cabeza) y Activadores (dispositivo → acción)
-    ├── comandos.py             # Comandos personalizados: lee y valida ~/.sillodromo/comandos.json
+    ├── comandos.py             # Comandos personalizados por categorías: lee, valida y guarda datos/comandos.json
+    ├── editor.py               # Pantalla para crear y editar comandos y categorías (para quien acompaña)
+    ├── icono.py                # Iconos SVG coloreados según el estado del bloque
+    ├── datos/                  # comandos.json y calibracion.json (fuera de git: son de cada equipo)
+    ├── iconos/                 # Iconos SVG de Lucide (licencia ISC en iconos/LICENSE)
     ├── voz.py                  # Texto a voz con pyttsx3 (lo que dicen los bloques y la calibración)
     ├── camara.py               # Captura de cámara + detección de rostro con MediaPipe (en un hilo aparte)
     ├── modelos/face_landmarker.task  # Modelo de MediaPipe para la detección de rostro
@@ -127,11 +121,25 @@ docker compose up --build
 
 ## Control con la cabeza (cruceta)
 
-La app se maneja por bloques. Girar la cabeza (izquierda, derecha, arriba o abajo) mueve la selección al bloque vecino, que se ilumina en ámbar. Cada giro cuenta una sola vez: hay que volver al centro antes del siguiente. **Abrir la boca** pulsa el bloque seleccionado. Los ojos no se usan.
+La app se maneja por bloques. Girar la cabeza (izquierda, derecha, arriba o abajo) mueve la selección al bloque vecino, que se ilumina (azul oscuro con borde grueso). Cada giro cuenta una sola vez: hay que volver al centro antes del siguiente. **Abrir la boca** pulsa el bloque seleccionado. Los ojos no se usan.
 
 Las perillas de calibración (`UMBRAL_GIRO`, `BOCA_ABIERTA`, `BOCA_CERRADA`, `CUADROS_ESTABLES`) están en `app/camara.py`.
 
 ## Calibración inicial
+
+**La calibración se guarda** en `app/datos/calibracion.json`, dentro del proyecto. Esa carpeta no va a git, porque la calibración es de cada equipo. En Docker persiste porque `./app` está montado como volumen. Se guardan dos partes:
+
+- **La cara:** el centro de reposo, el umbral de cada dirección y la apertura de la boca.
+- **La pantalla:** el modelo de la mirada.
+
+Al abrir la app:
+
+- **Con las dos partes guardadas**, va directo al menú. La luz se sigue revisando sola en cada arranque, sin pantalla ni voz, porque cambia entre el día y la noche.
+- **Con una sola parte guardada**, solo pide la que falta.
+- **Sin nada guardado**, pide la calibración, o `Esc` para usar los valores por defecto. Lo que se omite con `Esc` no se guarda, así que la próxima vez se vuelve a pedir. Una calibración de pantalla imprecisa tampoco se guarda.
+- **Si el archivo está dañado** o es de otra versión, la app no se rompe: calibra de nuevo la parte que no pudo leer.
+
+**Volver a calibrar:** está en el menú. Sirve si se movió la silla, la cámara o la pantalla. Pide confirmación, con "No" seleccionado de partida, porque con la mirada se podría activar sin querer. Al confirmar, borra lo guardado y repite todo.
 
 **Todo el texto de la calibración se lee en voz alta** para quien no ve bien la pantalla, y cada paso espera a que termine la lectura antes de empezar a medir. En la calibración de pantalla también se dice dónde está cada punto ("Punto 7 de 16: a la derecha, al centro"). Sin `pyttsx3`, la calibración funciona igual, pero en silencio.
 
@@ -161,28 +169,17 @@ Perillas: `TIEMPO_PERMANENCIA`, `GRACIA`, `RIDGE`, `CORTE_MIN` y `BETA` (filtro 
 
 ## Comandos personalizados
 
-En Activadores, el dispositivo **Comandos** muestra un bloque por cada comando del archivo `~/.sillodromo/comandos.json`. En Windows es `C:\Users\<usuario>\.sillodromo\comandos.json`. Lo edita quien acompaña, y la app lo lee al abrirse. Si no existe, la app lo crea con tres ejemplos:
+En Activadores, el dispositivo **Comandos** muestra primero las **categorías** (por ejemplo, "Solicitar atención" o "Casa") y, al elegir una, sus comandos. Cada comando es un bloque con icono. Al pulsarlo, la voz dice su frase tal cual: "Ir al baño" dice "Por favor, llévenme al baño".
 
-```json
-[
-  {"texto": "Buenas noches", "frase": "Alexa, buenas noches"},
-  {"texto": "Abrir persianas", "frase": "Alexa, abre las persianas"}
-]
-```
+**Se crean desde la app.** En la página de Comandos, **"Editar comandos"** abre una pantalla normal, con teclado y ratón, para quien acompaña:
 
-- `texto` es lo que dice el bloque y `frase` es lo que se le dice a Alexa. Si la frase no empieza por "Alexa", se añade sola.
-- Lo que hace cada frase se configura en la app de Alexa como una **Rutina**, por ejemplo "buenas noches" para apagar todo. Aquí solo se dice la frase.
-- Se muestran como máximo 12 comandos (3 filas de 4). Un archivo mal escrito no impide que la app arranque: el problema se explica al pie de la página de Comandos.
-- En Docker el archivo vive dentro del contenedor y se pierde al recrearlo.
+- **Categorías:** crear, editar (nombre e icono) y borrar. Al borrar una categoría también se borran sus comandos, y la app pide confirmación.
+- **Comandos:** crear, editar y borrar. Cada comando tiene un **título** (lo que dice el bloque), la **frase que dirá la voz** (con un botón "Probar voz"), su **categoría** (se puede mover a otra) y un **icono**, elegido de una rejilla con todos los iconos a la vista. Como máximo caben 12 comandos por categoría.
+- **La mirada y la cruceta no actúan en el editor**, para que la persona en la silla no borre nada sin querer. Las flechas del teclado mueven las listas.
 
-| Tecla / Atajo | Acción |
-| :--- | :--- |
-| `Tab` | Avanzar al siguiente elemento interactivo |
-| `Shift + Tab` | Retroceder al elemento interactivo anterior |
-| `Espacio` | Pulsar el bloque seleccionado (igual que abrir la boca) |
-| `Flechas` | Mover la selección al bloque vecino (igual que girar la cabeza) |
+Todo se guarda al momento en `app/datos/comandos.json`. Un archivo dañado no impide que la app arranque, y el formato antiguo (una lista suelta) se convierte solo.
 
----
+Las frases para una persona se escriben tal cual. Si una frase empieza por "Alexa", la voz hace la pausa de 1 s tras "Alexa", y lo que hace esa orden se configura en las **Rutinas** de la app de Alexa.
 
 ## Ejecución Nativa (sin Docker)
 
@@ -210,7 +207,13 @@ python3 -m venv --system-site-packages .venv
 
 ### Voz
 
-En Activadores, cada bloque le dice su orden a Alexa en voz alta con `pyttsx3` ("Alexa…" y, tras 1 s, "encender foco 1"). Hay cuatro dispositivos: Focos, Televisiones y Enchufes (encender y apagar las unidades 1, 2 y 3) y Alexa (géneros de música). Se definen en `DISPOSITIVOS` (`app/main.py`). Se usa usando una voz en español si el sistema tiene alguna. En Linux necesita `espeak-ng` (`sudo apt install espeak-ng`). En Docker el contenedor no tiene salida de audio, así que las frases no se oyen.
+En Activadores, cada bloque le dice su orden a Alexa en voz alta con `pyttsx3` ("Alexa…" y, tras 1 s, "encender foco 1"). Los dispositivos son estos, y se definen en `DISPOSITIVOS` (`app/main.py`):
+
+- **Focos** y **Enchufes:** encender y apagar las unidades 1, 2 y 3.
+- **Televisiones:** para cada televisión 1, 2 y 3, encender, apagar, YouTube, Netflix y subir o bajar el volumen un 10 %.
+- **Música:** poner, detener, subir o bajar el volumen un 10 %, y los géneros.
+
+Las frases exactas dependen de cómo tenga Alexa configurado cada aparato; si alguna no la entiende, se cambia en `DISPOSITIVOS`. Se usa una voz en español si el sistema tiene alguna. En Linux necesita `espeak-ng` (`sudo apt install espeak-ng`). En Docker el contenedor no tiene salida de audio, así que las frases no se oyen.
 
 ## Desarrollo y Modificación en Vivo (Hot Reload)
 

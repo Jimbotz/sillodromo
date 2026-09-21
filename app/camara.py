@@ -3,11 +3,12 @@ camara.py - Captura de la cámara con detección de rostro (MediaPipe FaceLandma
 Se importa aparte para que la interfaz arranque aunque falten OpenCV o MediaPipe.
 """
 
+import json
 import os
 import statistics
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import cv2
 import numpy as np
@@ -59,6 +60,18 @@ class Perfil:
     boca_abierta: float = BOCA_ABIERTA
     boca_cerrada: float = BOCA_CERRADA
     sin_calibrar: tuple = ()  # direcciones (o "boca") sin movimiento suficiente: usan el valor por defecto
+
+    def a_dict(self) -> dict:
+        return {**asdict(self), "sin_calibrar": list(self.sin_calibrar)}
+
+    @classmethod
+    def desde_dict(cls, d: dict) -> "Perfil":
+        """Perfil guardado. Lanza KeyError, TypeError o ValueError si falta algo o no es un número."""
+        umbrales = {k: float(d["umbrales"][k]) for k in DIRECCIONES}
+        if min(umbrales.values()) <= 0:
+            raise ValueError("umbral no positivo")
+        return cls(float(d["centro_h"]), float(d["centro_v"]), umbrales, float(d["boca_abierta"]),
+                   float(d["boca_cerrada"]), tuple(str(x) for x in d.get("sin_calibrar", ())))
 
     def resumen(self) -> str:
         giros = " · ".join(f"{d} {self.umbrales[d]:.2f}" for d in DIRECCIONES)
@@ -169,35 +182,38 @@ def _pico(valores):
 class Calibracion:
     """Guía la calibración inicial paso a paso y construye el Perfil del usuario."""
 
-    def __init__(self):
+    def __init__(self, perfil_guardado: "Perfil" = None):
+        # Con un perfil guardado solo queda el paso "luz": la iluminación cambia de un día a otro
+        self.guardado = perfil_guardado
+        self.pasos = PASOS_CALIBRACION[:1] if perfil_guardado is not None else PASOS_CALIBRACION
         self.i, self.tiempo = 0, 0.0
         self.muestras = {clave: [] for clave, _, _ in PASOS_CALIBRACION}  # (h, v, mandíbula)
         self.omitida = False  # tecla Esc: se usan los valores por defecto
 
     @property
     def terminada(self) -> bool:
-        return self.omitida or self.i >= len(PASOS_CALIBRACION)
+        return self.omitida or self.i >= len(self.pasos)
 
     @property
     def paso(self) -> str:
-        return "" if self.terminada else PASOS_CALIBRACION[self.i][0]
+        return "" if self.terminada else self.pasos[self.i][0]
 
     @property
     def instruccion(self) -> str:
-        return "" if self.terminada else PASOS_CALIBRACION[self.i][1]
+        return "" if self.terminada else self.pasos[self.i][1]
 
     @property
     def progreso(self) -> float:
         """0 a 1 sobre toda la calibración."""
         if self.terminada:
             return 1.0
-        return (self.i + self.tiempo / PASOS_CALIBRACION[self.i][2]) / len(PASOS_CALIBRACION)
+        return (self.i + self.tiempo / self.pasos[self.i][2]) / len(self.pasos)
 
     def agregar(self, dt: float, medidas=None, mandibula: float = 0.0):
         """Un cuadro de la cámara. medidas: (h, v) de medidas_cara, o None si no hay cara."""
         if self.terminada:
             return
-        clave, _, duracion = PASOS_CALIBRACION[self.i]
+        clave, _, duracion = self.pasos[self.i]
         if medidas is None and clave != "luz":
             return  # sin cara el tiempo no corre
         if medidas is not None:
@@ -207,6 +223,8 @@ class Calibracion:
             self.i, self.tiempo = self.i + 1, 0.0
 
     def perfil(self) -> Perfil:
+        if self.guardado is not None:
+            return self.guardado
         reposo = self.muestras["centro"]
         if self.omitida or not reposo:
             return Perfil()
@@ -300,6 +318,21 @@ class ModeloMirada:
         x, y = (self._diseno(rasgos) @ self.pesos)[0]
         return float(np.clip(x, 0, 1)), float(np.clip(y, 0, 1))
 
+    def a_dict(self) -> dict:
+        return {"media": self.media.tolist(), "escala": self.escala.tolist(), "pesos": self.pesos.tolist()}
+
+    @classmethod
+    def desde_dict(cls, d: dict) -> "ModeloMirada":
+        """Modelo guardado. Lanza KeyError, TypeError o ValueError si no tiene la forma esperada."""
+        modelo = cls.__new__(cls)
+        modelo.media, modelo.escala, modelo.pesos = (np.asarray(d[k], float) for k in ("media", "escala", "pesos"))
+        n = 2 * len(OJOS) + 2  # rasgos_mirada: 2 por ojo más 2 de la cabeza
+        if (modelo.media.shape != (n,) or modelo.escala.shape != (n,) or modelo.pesos.shape != (n + 1, 2)
+                or not all(np.all(np.isfinite(a)) for a in (modelo.media, modelo.escala, modelo.pesos))
+                or np.any(modelo.escala <= 0)):
+            raise ValueError("el modelo de mirada guardado no tiene la forma esperada")
+        return modelo
+
     def error_medio(self, rasgos, posiciones) -> float:
         """Distancia media (fracción de pantalla) entre lo predicho y los puntos mirados."""
         return float(np.mean([np.hypot(*(np.array(self.predecir(r)) - p)) for r, p in zip(rasgos, posiciones)]))
@@ -371,6 +404,73 @@ class Permanencia:
         return 0.0 if self.bloque is None or self.usado else min(1.0, self.tiempo / TIEMPO_PERMANENCIA)
 
 
+# ---------------------------------------------------------------------------
+# Calibración guardada: perfil de la cara y modelo de la mirada, para no calibrar en cada arranque
+# ---------------------------------------------------------------------------
+# En la carpeta del proyecto (app/datos, fuera de git: es de cada equipo); Docker la ve por el volumen ./app
+RUTA_CALIBRACION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "datos", "calibracion.json")
+VERSION_CALIBRACION = 1  # cambiarla si cambia el formato: lo guardado con otra versión se ignora
+
+
+def cargar_calibracion(ruta: str = None) -> tuple:
+    """(perfil o None, modelo de mirada o None). Nunca lanza: si el archivo falta o está dañado,
+    la parte que no se pueda leer se vuelve a calibrar."""
+    ruta = ruta or RUTA_CALIBRACION
+    try:
+        with open(ruta, encoding="utf-8") as f:
+            datos = json.load(f)
+    except FileNotFoundError:
+        return None, None
+    except (OSError, ValueError) as e:
+        print(f"Calibración guardada ilegible ({e}): se vuelve a calibrar", flush=True)
+        return None, None
+    if not isinstance(datos, dict) or datos.get("version") != VERSION_CALIBRACION:
+        print("Calibración guardada con otro formato: se vuelve a calibrar", flush=True)
+        return None, None
+    partes = []
+    for clave, clase in (("perfil", Perfil), ("mirada", ModeloMirada)):
+        try:
+            partes.append(clase.desde_dict(datos[clave]) if clave in datos else None)
+        except (KeyError, TypeError, ValueError) as e:
+            print(f"Calibración guardada: '{clave}' dañado ({e}), se vuelve a calibrar esa parte", flush=True)
+            partes.append(None)
+    return tuple(partes)
+
+
+def guardar_calibracion(ruta: str = None, perfil: Perfil = None, modelo: "ModeloMirada" = None) -> bool:
+    """Guarda las partes dadas y conserva las otras. Escribe en un temporal y lo renombra, así
+    un corte a medias no deja el archivo roto. Devuelve False si no se pudo (y sigue sin guardar)."""
+    ruta = ruta or RUTA_CALIBRACION
+    try:
+        try:
+            with open(ruta, encoding="utf-8") as f:
+                datos = json.load(f)
+            if not isinstance(datos, dict) or datos.get("version") != VERSION_CALIBRACION:
+                datos = {}
+        except (FileNotFoundError, ValueError):
+            datos = {}
+        datos["version"] = VERSION_CALIBRACION
+        if perfil is not None:
+            datos["perfil"] = perfil.a_dict()
+        if modelo is not None:
+            datos["mirada"] = modelo.a_dict()
+        os.makedirs(os.path.dirname(ruta), exist_ok=True)
+        with open(ruta + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(datos, f, ensure_ascii=False, indent=2)
+        os.replace(ruta + ".tmp", ruta)
+        return True
+    except OSError as e:
+        print(f"No pude guardar la calibración ({e})", flush=True)
+        return False
+
+
+def borrar_calibracion(ruta: str = None):
+    try:
+        os.remove(ruta or RUTA_CALIBRACION)
+    except FileNotFoundError:
+        pass
+
+
 class HiloCamara(QThread):
     """Lee la cámara y ejecuta MediaPipe fuera del hilo de la interfaz."""
 
@@ -378,14 +478,15 @@ class HiloCamara(QThread):
     error = pyqtSignal(str)
     gesto = pyqtSignal(str)  # "izquierda", "derecha", "arriba", "abajo" o "pulsar"
     calibrando = pyqtSignal(str, str, float, bool)  # paso, instrucción, progreso 0-1, cara a la vista
-    calibrado = pyqtSignal(str, tuple)  # resumen y lo que quedó sin calibrar; desde aquí, cruceta
+    calibrado = pyqtSignal(str, tuple, object)  # resumen, lo que quedó sin calibrar, Perfil; desde aquí, cruceta
     rasgos = pyqtSignal(object)  # rasgos_mirada de cada cuadro con cara, tras la calibración inicial
 
-    def __init__(self, parent=None, con_imagen=True):
+    def __init__(self, parent=None, con_imagen=True, perfil_guardado: Perfil = None):
         super().__init__(parent)
+        self.reiniciar = False  # "Volver a calibrar": el bucle empieza de cero (con self.calibracion nueva)
         # False: solo se calcula la dirección; no se dibuja la malla ni se crea la QImage
         self.con_imagen = con_imagen
-        self.calibracion = Calibracion()  # corre al arrancar, antes de la cruceta
+        self.calibracion = Calibracion(perfil_guardado)  # corre al arrancar, antes de la cruceta
         # Mientras devuelva True, la calibración no avanza (la interfaz lo usa mientras lee en voz alta)
         self.pausa = lambda: False
         # Se abre en el hilo principal: en macOS OpenCV solo puede pedir el permiso de cámara desde ahí.
@@ -421,6 +522,9 @@ class HiloCamara(QThread):
             marca_ms = 0
             anterior = time.monotonic()
             while not self.isInterruptionRequested():
+                if self.reiniciar:  # todo desde cero, también la revisión de la luz
+                    self.reiniciar = False
+                    cruceta, perfil, listo, curva, luz_revisada = Cruceta(), PERFIL_BASE, False, None, False
                 ok, bgr = cap.read()
                 if not ok:
                     self.error.emit("La cámara dejó de enviar imagen")
@@ -464,7 +568,7 @@ class HiloCamara(QThread):
                     if self.calibracion.terminada:
                         perfil, cruceta, listo = self.calibracion.perfil(), Cruceta(), True
                         luz = "corregida con CLAHE" if curva is not None else "buena, sin corrección"
-                        self.calibrado.emit(f"{perfil.resumen()} · luz: {luz}", perfil.sin_calibrar)
+                        self.calibrado.emit(f"{perfil.resumen()} · luz: {luz}", perfil.sin_calibrar, perfil)
                     else:
                         self.calibrando.emit(self.calibracion.paso, self.calibracion.instruccion,
                                              self.calibracion.progreso, cara is not None)
@@ -596,3 +700,29 @@ if __name__ == "__main__":
     assert retraso < 0.2, retraso  # salto: llega en menos de 0,2 s
     print(f"FiltroUnEuro: OK (temblor {temblor:.4f} vs {temblor_crudo:.4f} sin filtro; llega al 90 % en {retraso:.2f} s)")
     print("Permanencia: OK")
+
+    # Calibración guardada: ida y vuelta, archivo roto, partes sueltas y formas incorrectas
+    import tempfile
+    with tempfile.TemporaryDirectory() as carpeta:
+        ruta = os.path.join(carpeta, "sub", "calibracion.json")
+        assert cargar_calibracion(ruta) == (None, None)  # no existe: hay que calibrar
+        assert guardar_calibracion(ruta, perfil=p)  # p: el perfil calibrado más arriba
+        perfil_leido, modelo_leido = cargar_calibracion(ruta)
+        assert perfil_leido == p and modelo_leido is None  # solo la cara: falta la pantalla
+        assert guardar_calibracion(ruta, modelo=modelo)  # añade la mirada y conserva el perfil
+        perfil_leido, modelo_leido = cargar_calibracion(ruta)
+        assert perfil_leido == p and modelo_leido.predecir(rasgos[0]) == modelo.predecir(rasgos[0])
+        assert Calibracion(p).pasos == PASOS_CALIBRACION[:1] and Calibracion(p).perfil() is p  # solo la luz
+        with open(ruta, "w") as f:
+            f.write("{roto")
+        assert cargar_calibracion(ruta) == (None, None)  # dañado: se recalibra, sin lanzar
+        with open(ruta, "w") as f:
+            json.dump({"version": VERSION_CALIBRACION, "perfil": {"centro_h": "x"}, "mirada": {"media": [1, 2]}}, f)
+        assert cargar_calibracion(ruta) == (None, None)
+        with open(ruta, "w") as f:
+            json.dump({"version": 999, "perfil": p.a_dict()}, f)
+        assert cargar_calibracion(ruta) == (None, None)  # otro formato
+        borrar_calibracion(ruta)
+        borrar_calibracion(ruta)  # borrar dos veces no falla
+        assert not os.path.exists(ruta)
+    print("calibración guardada: OK")

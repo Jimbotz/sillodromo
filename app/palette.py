@@ -1,68 +1,72 @@
 """
-palette.py - Sistema de Diseño y Accesibilidad WCAG 2.1 AA/AAA
-Paleta universal segura para daltonismo (Deuteranopía, Protanopía, Tritanopía)
-y optimizada para baja visión y fotofobia.
+palette.py - Colores de Sillódromo y comprobación de contraste WCAG 2.1.
+Tema en blancos y azules atenuados (menos brillo: el fondo refleja ~37 % menos luz que un blanco
+casi puro), pensado para baja visión, fotofobia y daltonismo:
+- Nada de blanco puro de fondo ni negro puro de texto: el fondo es un blanco azulado y el texto
+  un azul casi negro. Menos deslumbramiento y menos halo con astigmatismo.
+- Texto normal con contraste AAA (7:1 o más) sobre todos los fondos donde aparece.
+- Bordes de los bloques con 3:1 o más frente al fondo (WCAG 1.4.11): se ve dónde empieza cada bloque.
+- El bloque seleccionado cambia de claro a azul oscuro con texto blanco y borde grueso: se nota por
+  luminosidad y por grosor, no solo por el tono, así que sirve igual con cualquier tipo de daltonismo.
+styles.qss repite estos valores (QSS no puede importar Python): al cambiar uno, cambiar los dos.
+Comprobar: python app/palette.py
 """
 
 from typing import Tuple
 
 
 class AccessibleColors:
-    """
-    Paleta de colores con ratios de contraste validados según WCAG 2.1.
-    Evita negros puros (#000000) y blancos puros (#FFFFFF) para reducir la fatiga
-    visual y los halos provocados por el astigmatismo.
-    """
-    # Fondos y superficies (Modo oscuro suave / Carbón)
-    BG_WINDOW = "#1E1E24"          # Fondo principal de la ventana
-    BG_SURFACE = "#2B2D42"         # Superficie de tarjetas, paneles y contenedores
-    BG_INPUT = "#363953"           # Fondo de inputs, comboboxes y campos de texto
-    BG_HOVER = "#434766"           # Estado hover de elementos interactivos
-    BG_TABLE_ALT = "#242638"       # Filas alternas de tablas para seguimiento ocular
+    # Fondos
+    BG_WINDOW = "#BFC9DA"  # fondo de la ventana: azul grisáceo claro
+    BG_SURFACE = "#DDE4EF"  # barra de permanencia y centro del puntero
+    BG_BLOCK = "#CFD8E6"  # bloque en reposo
+    BG_HOVER = "#C3CEDF"  # bloque con el ratón encima
+    BG_DISABLED = "#C8CFDB"  # bloque bloqueado (mientras termina una acción)
+    BG_GUIDE = "#C9D2E1"  # círculo de la flecha y barra de progreso
 
-    # Bordes y separadores
-    BORDER_DEFAULT = "#595F85"     # Borde visible de controles (mínimo 1.5px - 2px)
-    BORDER_FOCUS = "#E69F00"       # Borde de foco por teclado de alto contraste (3px)
+    # Bordes
+    BORDER_DEFAULT = "#4B5B7E"  # borde de bloques y guías
+    BORDER_DISABLED = "#A3AEC2"
 
-    # Tipografía
-    TEXT_PRIMARY = "#F4F4F6"       # Marfil suave (Contraste > 14:1 contra BG_WINDOW)
-    TEXT_SECONDARY = "#D8D8E0"     # Gris claro para descripciones (Contraste > 10:1)
-    TEXT_MUTED = "#B8B9C8"         # Texto atenuado accesible (Contraste > 7:1)
-    TEXT_DISABLED = "#8E92AA"      # Texto deshabilitado
+    # Texto (e iconos, que usan el mismo color que el texto de su bloque)
+    TEXT_PRIMARY = "#111B31"
+    TEXT_MUTED = "#2B3650"  # ayudas y notas al pie
+    TEXT_DISABLED = "#56617B"  # exento de contraste (WCAG 1.4.3), pero legible
+    TEXT_ERROR = "#6B0F0F"  # mensajes de error del editor (siempre con texto, nunca solo color)
 
-    # Acciones principales (Paleta Okabe-Ito)
-    PRIMARY_BUTTON = "#0072B2"     # Azul cobalto accesible
-    PRIMARY_BUTTON_HOVER = "#005A9C"
-    PRIMARY_BUTTON_TEXT = "#FFFFFF"
+    # Selección (cruceta o mirada): el "bloque iluminado"
+    SELECTED = "#1D4C8F"  # relleno
+    SELECTED_PRESSED = "#173F75"
+    SELECTED_BORDER = "#0A2657"  # borde grueso; también contorno de la flecha y del puntero
+    SELECTED_TEXT = "#FFFFFF"  # única excepción al "sin blanco puro": texto sobre azul oscuro
 
-    SECONDARY_BUTTON = "#3E425E"
-    SECONDARY_BUTTON_HOVER = "#4D5275"
-    SECONDARY_BUTTON_TEXT = "#F4F4F6"
 
-    # Estados informativos y notificaciones (SIEMPRE combinan Icono + Texto + Color)
-    # Éxito (Verde azulado seguro para daltonismo)
-    SUCCESS_BG = "#103B32"
-    SUCCESS_BORDER = "#009E73"
-    SUCCESS_TEXT = "#A3F7DF"
-    SUCCESS_BADGE = "[✓] ÉXITO"
-
-    # Advertencia (Ámbar / Naranja accesible)
-    WARNING_BG = "#4A3305"
-    WARNING_BORDER = "#E69F00"
-    WARNING_TEXT = "#FFE2A8"
-    WARNING_BADGE = "[!] ADVERTENCIA"
-
-    # Error (Bermellón / Rojo de alto contraste)
-    ERROR_BG = "#471A1A"
-    ERROR_BORDER = "#D55E00"
-    ERROR_TEXT = "#FFD1D1"
-    ERROR_BADGE = "[✖] ERROR"
-
-    # Información (Azul cielo accesible)
-    INFO_BG = "#11324D"
-    INFO_BORDER = "#56B4E9"
-    INFO_TEXT = "#CBEBFC"
-    INFO_BADGE = "[ℹ] INFORMACIÓN"
+# Pares que aparecen en la interfaz: (qué es, primer plano, fondo, contraste mínimo)
+C = AccessibleColors
+PARES = [
+    ("texto sobre fondo", C.TEXT_PRIMARY, C.BG_WINDOW, 7),
+    ("texto sobre bloque", C.TEXT_PRIMARY, C.BG_BLOCK, 7),
+    ("texto sobre bloque con ratón", C.TEXT_PRIMARY, C.BG_HOVER, 7),
+    ("texto en campos y listas del editor", C.TEXT_PRIMARY, C.BG_SURFACE, 7),
+    ("borde de campo frente al fondo", C.BORDER_DEFAULT, C.BG_WINDOW, 3),
+    ("mensaje de error sobre el fondo", C.TEXT_ERROR, C.BG_WINDOW, 7),
+    ("icono sobre bloque", C.TEXT_PRIMARY, C.BG_BLOCK, 3),
+    ("icono del bloque seleccionado", C.SELECTED_TEXT, C.SELECTED, 3),
+    ("nota al pie sobre fondo", C.TEXT_MUTED, C.BG_WINDOW, 7),
+    ("nota al pie sobre bloque", C.TEXT_MUTED, C.BG_BLOCK, 7),
+    ("texto del bloque seleccionado", C.SELECTED_TEXT, C.SELECTED, 7),
+    ("texto del bloque pulsado", C.SELECTED_TEXT, C.SELECTED_PRESSED, 7),
+    ("barra de permanencia sobre el bloque seleccionado", C.BG_SURFACE, C.SELECTED, 3),
+    ("aviso: texto sobre su recuadro", C.SELECTED_TEXT, C.SELECTED_BORDER, 7),
+    ("borde de bloque frente al fondo", C.BORDER_DEFAULT, C.BG_WINDOW, 3),
+    ("borde de bloque frente a su relleno", C.BORDER_DEFAULT, C.BG_BLOCK, 3),
+    ("bloque seleccionado frente al fondo", C.SELECTED, C.BG_WINDOW, 3),
+    ("bloque seleccionado frente a sus vecinos", C.SELECTED, C.BG_BLOCK, 3),
+    ("flecha y blanco de calibración sobre su círculo", C.SELECTED, C.BG_GUIDE, 3),
+    ("contorno del puntero sobre el fondo", C.SELECTED_BORDER, C.BG_WINDOW, 3),
+    ("contorno claro del puntero sobre el bloque seleccionado", C.BG_SURFACE, C.SELECTED, 3),
+    ("progreso de calibración sobre su barra", C.SELECTED, C.BG_GUIDE, 3),
+]
 
 
 def hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
@@ -109,3 +113,14 @@ def check_wcag_compliance(fg: str, bg: str, is_large_text: bool = False) -> dict
         "required_aa": min_aa,
         "required_aaa": min_aaa,
     }
+
+
+if __name__ == "__main__":
+    fallos = []
+    for nombre, frente, fondo, minimo in PARES:
+        ratio = calculate_contrast_ratio(frente, fondo)
+        print(f"{'OK ' if ratio >= minimo else 'NO '} {ratio:5.2f}:1 (mínimo {minimo}:1)  {nombre}")
+        if ratio < minimo:
+            fallos.append(nombre)
+    assert not fallos, f"Contraste insuficiente: {fallos}"
+    print("palette: OK")
