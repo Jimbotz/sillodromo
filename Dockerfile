@@ -13,8 +13,17 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pyqt5 \
+    python3-pip \
+    # MediaPipe carga libGLESv2 al iniciar, incluso con el delegado CPU
+    libgles2 \
+    # Motor de voz que usa pyttsx3 en Linux
+    espeak-ng \
     fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
+
+# MediaPipe (y OpenCV) desde pip: Debian no los empaqueta. Se instalan en el Python del
+# sistema, que es el que ve el PyQt5 de apt; por eso --break-system-packages.
+RUN python3 -m pip install --no-cache-dir --break-system-packages mediapipe==1.0.1 pyttsx3==2.99
 
 # Crear usuario no-root para seguridad y compatibilidad de permisos con el servidor X11
 ARG USER_ID=1000

@@ -32,10 +32,13 @@ Aplicación de escritorio desarrollada en **Python** con **PyQt5**, totalmente c
 sillodromo/
 ├── Dockerfile                  # Imagen Debian slim con PyQt5 de apt (amd64 y arm64) + usuario no-root
 ├── docker-compose.yml          # Mapeo del socket X11, variables de entorno y recarga en caliente
-├── requirements.txt            # Dependencias Python (PyQt5)
+├── requirements.txt            # Dependencias Python (PyQt5, MediaPipe)
 ├── README.md                   # Documentación y guía de despliegue multiplataforma
 └── app/
-    ├── main.py                 # Aplicación PyQt5: 3 vistas (Silla, Alexa 1, Secadora 3)
+    ├── main.py                 # Vistas Menú, Navegación (cámara + flecha) y Activadores (módulos y cámara)
+    ├── voz.py                  # Texto a voz con pyttsx3 (botones del módulo Alexa 1)
+    ├── camara.py               # Captura de cámara + detección de rostro con MediaPipe (en un hilo aparte)
+    ├── modelos/face_landmarker.task  # Modelo de MediaPipe para la detección de rostro
     ├── palette.py              # Definición matemática de colores, luminancia y ratios WCAG
     └── styles.qss              # Hoja de estilos Qt accesible WCAG 2.1
 ```
@@ -138,9 +141,25 @@ pip install -r requirements.txt
 python app/main.py
 ```
 
-En Linux arm64 (Raspberry Pi, etc.) pip no tiene PyQt5 precompilado; instálalo con `sudo apt install python3-pyqt5` y ejecuta `python3 app/main.py`.
+En Linux arm64 (Raspberry Pi, etc.) pip no tiene PyQt5 precompilado. Usa el de apt y MediaPipe desde pip:
+```bash
+sudo apt install python3-pyqt5 libgles2
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install mediapipe==1.0.1
+.venv/bin/python app/main.py
+```
+
+### Cámara
+
+- **macOS**: la primera vez el sistema pide permiso de cámara para la terminal desde la que lanzas la app. Si no aparece o lo negaste, actívalo en *Ajustes del Sistema > Privacidad y seguridad > Cámara*.
+- **Mac Intel**: MediaPipe no publica paquete para esta plataforma; la app arranca igual y el panel de la cámara indica que no está disponible.
+- **Docker**: solo en hosts Linux, descomentando el bloque `devices` de `docker-compose.yml`. Docker Desktop (macOS/Windows) no puede pasar la webcam al contenedor; allí ejecuta la app de forma nativa.
 
 ---
+
+### Voz
+
+Los botones del módulo Alexa 1 dicen "Alexa", "Alexa, enciende la luz" y "Alexa, apaga la luz" con `pyttsx3`, usando una voz en español si el sistema tiene alguna. En Linux necesita `espeak-ng` (`sudo apt install espeak-ng`). En Docker el contenedor no tiene salida de audio, así que las frases no se oyen.
 
 ## Desarrollo y Modificación en Vivo (Hot Reload)
 

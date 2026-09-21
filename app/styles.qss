@@ -55,6 +55,34 @@ QLabel#tituloVista {
     font-weight: 700;
 }
 
+QLabel#tituloTarjeta {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+/* Las etiquetas heredan el fondo de la ventana; dentro de tarjetas deben ser transparentes */
+QFrame#cardFrame QLabel {
+    background-color: transparent;
+}
+
+/* Módulo seleccionado en la barra superior */
+QPushButton:checked, QPushButton:checked:hover {
+    background-color: #0072B2;
+    border-color: #0072B2;
+    color: #FFFFFF;
+}
+
+/* Línea bajo la barra de módulos y división entre paneles */
+QFrame#separador {
+    background-color: #595F85;
+    min-height: 2px;
+    max-height: 2px;
+}
+
+QSplitter::handle:horizontal {
+    background-color: #595F85;
+}
+
 /* ==========================================================================
    CAMPOS DE TEXTO E INPUTS (QLineEdit, QTextEdit)
    ========================================================================== */

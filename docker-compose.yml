@@ -14,6 +14,12 @@ services:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       # Montaje en caliente del código fuente para desarrollo
       - ./app:/app
+    # Cámara, solo en hosts Linux: descomenta para dar al contenedor acceso a la webcam.
+    # Docker Desktop (macOS/Windows) no puede pasar la cámara: allí ejecuta la app de forma nativa.
+    # devices:
+    #   - /dev/video0:/dev/video0
+    # group_add:
+    #   - video
     # Modo IPC host requerido para comunicación fluida con el servidor de ventanas X
     ipc: host
     extra_hosts:
