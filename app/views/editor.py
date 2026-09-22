@@ -1,7 +1,7 @@
 """
-editor.py - Pantalla para que quien acompaña cree y edite los comandos personalizados y sus categorías.
-Es una pantalla "normal" (teclado y ratón): la mirada y la cruceta no actúan aquí (ver main.py).
-Todo se guarda al momento en app/datos/comandos.json.
+views/editor.py - Pantalla para que quien acompaña cree y edite los comandos personalizados y sus
+categorías. Es una pantalla "normal" (teclado y ratón): la mirada y la cruceta no actúan aquí
+(ver window.py). Todo se guarda al momento en app/datos/comandos.json.
 """
 
 from PyQt5.QtCore import QSize, Qt, pyqtSignal
@@ -22,9 +22,9 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-import comandos
-import icono
-import voz
+from buttons import icons as icono
+from features import commands as comandos
+from features import voice as voz
 
 # Mostrado en el selector de color de DialogoComando: (etiqueta, valor guardado en "accion")
 OPCIONES_ACCION = [("Sin color", ""), ("Encender (verde)", "on"), ("Apagar (rojo)", "off")]

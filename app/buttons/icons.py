@@ -1,5 +1,5 @@
 """
-icono.py - Iconos SVG de app/iconos (Lucide, licencia ISC en iconos/LICENSE) para los bloques.
+buttons/icons.py - Iconos SVG de app/iconos (Lucide, licencia ISC en iconos/LICENSE) para los bloques.
 Se colorean según el estado del bloque y siempre acompañan al texto, nunca lo sustituyen.
 """
 
@@ -11,9 +11,9 @@ from PyQt5.QtGui import QIcon, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import QAbstractButton
 
-from palette import AccessibleColors as C
+from tools.palette import AccessibleColors as C
 
-CARPETA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "iconos")
+CARPETA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "iconos")
 TAMANO, TAMANO_VOLVER = 44, 30
 ESPACIO = 0.35  # aire a la derecha del icono (fracción de su tamaño): Qt solo deja 4 px hasta el texto
 POR_DEFECTO = "message-square-text"  # para comandos o categorías sin icono (o con uno que ya no existe)

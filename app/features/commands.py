@@ -1,6 +1,6 @@
 """
-comandos.py - Comandos personalizados, agrupados por categorías, en app/datos/comandos.json.
-Se crean y editan desde la app (editor.py); este módulo solo lee, valida y guarda.
+features/commands.py - Comandos personalizados, agrupados por categorías, en app/datos/comandos.json.
+Se crean y editan desde la app (views/editor.py); este módulo solo lee, valida y guarda.
 
     {"categorias": [
       {"nombre": "Solicitar atención", "icono": "hand",
@@ -12,17 +12,21 @@ La frase es exactamente lo que dice la voz. Si empieza por "Alexa", voz.hablar h
 tras "Alexa" para que el altavoz se active (lo que haga la orden se configura en las Rutinas de Alexa).
 
 "accion" es "on", "off" o "" (por defecto, también para comandos guardados antes de que existiera este
-campo): colorea el bloque de verde o rojo además de su texto e icono (ver main.crear_vista y
-main.clasificar_accion, que además intenta adivinarla del título cuando queda vacía).
+campo): colorea el bloque de verde o rojo además de su texto e icono (ver views.common.crear_vista y
+buttons.factory.clasificar_accion, que además intenta adivinarla del título cuando queda vacía).
 """
 
 import json
 import os
 import re
+import sys
 
-import icono
+if __package__ in (None, ""):  # se ejecuta directo (python app/features/commands.py): sumar app/ al path
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-RUTA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "datos", "comandos.json")
+from buttons import icons as icono
+
+RUTA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "datos", "comandos.json")
 MAXIMO = 12  # comandos por categoría: 3 filas de 4, bloques aún grandes para la mirada
 EJEMPLO = [
     {"nombre": "Solicitar atención", "icono": "hand", "comandos": [

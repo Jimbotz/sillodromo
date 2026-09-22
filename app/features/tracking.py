@@ -23,7 +23,7 @@ from mediapipe.tasks.python.vision import drawing_styles, drawing_utils
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QImage
 
-MODELO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos", "face_landmarker.task")
+MODELO = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "modelos", "face_landmarker.task")
 # Siempre CPU (el delegado por defecto). En macOS se usa MediaPipe 0.10.35 (ver requirements.txt):
 # la 1.0.1 aborta allí con CPU, y con GPU retiene una copia de cada cuadro (~100 MB/s).
 
@@ -411,7 +411,7 @@ class Permanencia:
 # Calibración guardada: perfil de la cara y modelo de la mirada, para no calibrar en cada arranque
 # ---------------------------------------------------------------------------
 # En la carpeta del proyecto (app/datos, fuera de git: es de cada equipo); Docker la ve por el volumen ./app
-RUTA_CALIBRACION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "datos", "calibracion.json")
+RUTA_CALIBRACION = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "datos", "calibracion.json")
 VERSION_CALIBRACION = 1  # cambiarla si cambia el formato: lo guardado con otra versión se ignora
 
 

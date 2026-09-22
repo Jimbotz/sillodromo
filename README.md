@@ -39,7 +39,7 @@ Raspberry Pi / Linux arm64, Docker y la guía completa de X11 Forwarding: ver m�
 
 ## Criterios de Diseño Accesible y Sistema de Color
 
-Tema claro en blancos y azules. Los colores están en `app/palette.py`, y `python app/palette.py` comprueba el contraste de cada par que aparece en la interfaz.
+Tema claro en blancos y azules. Los colores están en `app/tools/palette.py`, y `python app/tools/palette.py` comprueba el contraste de cada par que aparece en la interfaz.
 
 1. **Claro, pero atenuado.** El fondo es un azul grisáceo (`#BFC9DA`), que refleja un 37 % menos de luz que un blanco casi puro, y el texto es un azul casi negro (`#111B31`). Nunca se usan blanco ni negro puros: hay menos deslumbramiento, menos molestia con fotofobia y menos halo con astigmatismo. El texto de los bloques es grande (22 px) porque se lee de lejos.
 2. **Contraste medido.** Todo el texto tiene nivel **AAA**, 7:1 o más sobre su fondo; el texto de los bloques llega a 11,9:1. Los bordes de los bloques tienen 4,1:1 frente al fondo (WCAG 1.4.11 pide 3:1), así que se ve dónde empieza cada bloque.
@@ -60,17 +60,17 @@ sillodromo/
 ├── BENCHMARK.md                # Uso de CPU, memoria, hilos y procesos; hallazgos y recomendaciones
 ├── benchmark.py                # Repite las mediciones de BENCHMARK.md (macOS y Linux)
 └── app/
-    ├── main.py                 # Pantalla completa: Menú, Navegación (flecha según la cabeza) y Activadores (dispositivo → acción)
-    ├── comandos.py             # Comandos personalizados por categorías: lee, valida y guarda datos/comandos.json
-    ├── editor.py               # Pantalla para crear y editar comandos y categorías (para quien acompaña)
-    ├── icono.py                # Iconos SVG coloreados según el estado del bloque
+    ├── main.py                 # Lanzador: QApplication, escala de pantalla, hoja de estilos y VentanaPrincipal
+    ├── window.py               # VentanaPrincipal: qué vista está activa, hilo de cámara, calibración y puntero de mirada
+    ├── styles.qss              # Hoja de estilos Qt accesible WCAG 2.1
     ├── datos/                  # comandos.json y calibracion.json (fuera de git: son de cada equipo)
     ├── iconos/                 # Iconos SVG de Lucide (licencia ISC en iconos/LICENSE)
-    ├── voz.py                  # Texto a voz con pyttsx3 (lo que dicen los bloques y la calibración)
-    ├── camara.py               # Captura de cámara + detección de rostro con MediaPipe (en un hilo aparte)
     ├── modelos/face_landmarker.task  # Modelo de MediaPipe para la detección de rostro
-    ├── palette.py              # Definición matemática de colores, luminancia y ratios WCAG
-    └── styles.qss              # Hoja de estilos Qt accesible WCAG 2.1
+    ├── views/                  # Cada pantalla (menu, navigation, activators, calibration, confirm, editor) y common.py (rejilla de bloques y datos compartidos)
+    ├── widgets/                # Componentes reutilizables: camera_preview (círculo de cámara), gaze_overlay (puntero) y calibration_points
+    ├── buttons/                # Cómo se ve un bloque: icons.py (iconos Lucide) y factory.py (expandir, botón "volver", color por acción)
+    ├── features/               # Lógica de dominio: tracking.py (cámara + MediaPipe), commands.py (comandos.json) y voice.py (texto a voz)
+    └── tools/                  # Utilidades sin estado de UI: palette.py (colores y contraste WCAG), scale.py y geometry.py
 ```
 
 ---
@@ -158,7 +158,7 @@ La app se maneja por bloques. Girar la cabeza (izquierda, derecha, arriba o abaj
 
 **En la vista Navegación la cabeza conduce:** girar solo mueve la flecha, y ni la cabeza ni la mirada seleccionan bloques, así no se sale de la vista sin querer. **Abrir la boca vuelve al menú.** Al llegar al menú, la mirada no activa nada hasta que se mueva.
 
-Las perillas de calibración (`UMBRAL_GIRO`, `BOCA_ABIERTA`, `BOCA_CERRADA`, `CUADROS_ESTABLES`) están en `app/camara.py`.
+Las perillas de calibración (`UMBRAL_GIRO`, `BOCA_ABIERTA`, `BOCA_CERRADA`, `CUADROS_ESTABLES`) están en `app/features/tracking.py`.
 
 ## Calibración inicial
 
@@ -185,7 +185,7 @@ Con cámara, la app arranca calibrando (unos 25 s) antes de mostrar el menú. Ca
 3. **Rangos.** Girar a la izquierda, a la derecha, arriba y abajo tanto como se pueda, volviendo al centro entre cada uno. Cada dirección se activa con el 30 % de lo que el usuario alcanza (`FRACCION_RANGO`). Si no hay movimiento suficiente hacia un lado, se avisa en pantalla y esa dirección usa el valor por defecto.
 4. **Boca.** Abrirla todo lo posible fija cuánto debe abrirse para pulsar.
 
-`Esc` omite la calibración y usa los valores por defecto. El resultado se imprime en la terminal. Las perillas de calibración (`FRACCION_RANGO`, `UMBRAL_MINIMO`, `LUZ_MINIMA`, `CONTRASTE_MINIMO`, etc.) están en `app/camara.py`.
+`Esc` omite la calibración y usa los valores por defecto. El resultado se imprime en la terminal. Las perillas de calibración (`FRACCION_RANGO`, `UMBRAL_MINIMO`, `LUZ_MINIMA`, `CONTRASTE_MINIMO`, etc.) están en `app/features/tracking.py`.
 
 ## Puntero con ojos y cara (permanencia)
 
@@ -200,7 +200,7 @@ Tras la calibración inicial se calibra la pantalla: aparecen, de uno en uno, 16
 
 El puntero se suaviza con un **filtro 1€**: con la mirada quieta suaviza mucho y quita el temblor, y cuando la mirada salta casi no suaviza, así que no hay retraso.
 
-Perillas: `TIEMPO_PERMANENCIA`, `GRACIA`, `RIDGE`, `CORTE_MIN` y `BETA` (filtro 1€) en `app/camara.py`; `ASENTAR`, `MUESTREO`, `REARME` y `ERROR_MAXIMO` en `app/main.py`. Si el puntero tiembla, baja `CORTE_MIN`; si se queda atrás al mover la mirada, sube `BETA`.
+Perillas: `TIEMPO_PERMANENCIA`, `GRACIA`, `RIDGE`, `CORTE_MIN` y `BETA` (filtro 1€) en `app/features/tracking.py`; `ASENTAR`, `MUESTREO`, `REARME` y `ERROR_MAXIMO` en `app/window.py`. Si el puntero tiembla, baja `CORTE_MIN`; si se queda atrás al mover la mirada, sube `BETA`.
 
 ## Comandos personalizados
 
@@ -242,7 +242,7 @@ python3 -m venv --system-site-packages .venv
 
 ### Voz
 
-En Activadores, cada bloque le dice su orden a Alexa en voz alta con `pyttsx3` ("Alexa…" y, tras 1 s, "encender foco 1"). Los dispositivos son estos, y se definen en `DISPOSITIVOS` (`app/main.py`):
+En Activadores, cada bloque le dice su orden a Alexa en voz alta con `pyttsx3` ("Alexa…" y, tras 1 s, "encender foco 1"). Los dispositivos son estos, y se definen en `DISPOSITIVOS` (`app/views/common.py`):
 
 - **Focos** y **Enchufes:** encender y apagar las unidades 1, 2 y 3.
 - **Televisiones:** para cada televisión 1, 2 y 3, encender, apagar, YouTube, Netflix y subir o bajar el volumen un 10 %.
