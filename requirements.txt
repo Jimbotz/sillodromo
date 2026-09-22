@@ -5,3 +5,4 @@ PyQt5==5.15.10
 mediapipe==0.10.35; sys_platform == "darwin" and platform_machine == "arm64"
 mediapipe==1.0.1; sys_platform != "darwin"
 pyttsx3==2.99
+pyserial==3.5
