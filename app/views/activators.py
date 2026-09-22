@@ -12,7 +12,7 @@ from buttons.icons import con_icono
 from features import commands as comandos
 from tools import scale
 from views import common
-from views.common import DISPOSITIVOS, ICONOS_DISPOSITIVO, VISTA_EDITOR, boton_volver, crear_vista, primer_bloque
+from views.common import DISPOSITIVOS, ICONOS_DISPOSITIVO, VISTA_EDITOR, boton_volver, crear_vista, primer_bloque, solo_asistente
 
 
 def crear(ventana) -> QWidget:
@@ -73,8 +73,10 @@ def _crear_fase_comandos(ventana, i: int) -> QWidget:
     ventana.volver_comandos = con_icono(volver(QPushButton("Volver a dispositivos", fase)), "arrow-left",
                                         scale.TAMANO_ICONO_VOLVER)
     ventana.volver_comandos.clicked.connect(lambda: _volver_comandos(ventana))
-    editar = con_icono(volver(QPushButton("Editar comandos", fase)), "pencil", scale.TAMANO_ICONO_VOLVER)
-    editar.setAccessibleName("Editar comandos personalizados (para quien acompaña)")
+    # Solo ratón y teclado: la cruceta, la mirada y la boca no lo seleccionan (ver common.SOLO_ASISTENTE)
+    editar = solo_asistente(con_icono(volver(QPushButton("Editar comandos (Solo asistente)", fase)), "pencil",
+                                      scale.TAMANO_ICONO_VOLVER))
+    editar.setAccessibleName("Editar comandos personalizados, solo para quien acompaña, con ratón o teclado")
     editar.clicked.connect(lambda: _abrir_editor(ventana))
     fila = QHBoxLayout()
     fila.addWidget(ventana.volver_comandos)
@@ -96,7 +98,7 @@ def _reconstruir_comandos(ventana):
     categorias, aviso = comandos.cargar()
     filas = lambda bloques: [(None, bloques[k:k + 4]) for k in range(0, len(bloques), 4)]
     nota = " ".join(filter(None, [aviso, "Aún no hay categorías." if not categorias else "",
-                                  "Quien acompaña crea las categorías y los comandos con «Editar comandos»."]))
+                                  "Quien acompaña crea las categorías y los comandos con «Editar comandos (Solo asistente)», con ratón o teclado."]))
     ventana.pila_comandos.addWidget(crear_vista("Comandos", filas(
         [(c["nombre"], lambda _, k=k: _abrir_categoria(ventana, k), c["icono"]) for k, c in enumerate(categorias)]), nota))
     for c in categorias:

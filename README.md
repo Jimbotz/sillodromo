@@ -206,10 +206,11 @@ Perillas: `TIEMPO_PERMANENCIA`, `GRACIA`, `RIDGE`, `CORTE_MIN` y `BETA` (filtro 
 
 En Activadores, el dispositivo **Comandos** muestra primero las **categorías** (por ejemplo, "Solicitar atención" o "Casa") y, al elegir una, sus comandos. Cada comando es un bloque con icono. Al pulsarlo, la voz dice su frase tal cual: "Ir al baño" dice "Por favor, llévenme al baño".
 
-**Se crean desde la app.** En la página de Comandos, **"Editar comandos"** abre una pantalla normal, con teclado y ratón, para quien acompaña:
+**Se crean desde la app.** En la página de Comandos, **"Editar comandos (Solo asistente)"** abre una pantalla normal, con teclado y ratón, para quien acompaña:
 
 - **Categorías:** crear, editar (nombre e icono) y borrar. Al borrar una categoría también se borran sus comandos, y la app pide confirmación.
 - **Comandos:** crear, editar y borrar. Cada comando tiene un **título** (lo que dice el bloque), la **frase que dirá la voz** (con un botón "Probar voz"), su **categoría** (se puede mover a otra) y un **icono**, elegido de una rejilla con todos los iconos a la vista. Como máximo caben 12 comandos por categoría.
+- **El botón es solo para quien acompaña.** La mirada, la cruceta y la boca no lo seleccionan ni lo pulsan: funciona solo con ratón o teclado (Tab y Espacio), y se distingue por su borde punteado, además del texto.
 - **La mirada y la cruceta no actúan en el editor**, para que la persona en la silla no borre nada sin querer. Las flechas del teclado mueven las listas.
 
 Todo se guarda al momento en `app/datos/comandos.json`. Un archivo dañado no impide que la app arranque, y el formato antiguo (una lista suelta) se convierte solo.

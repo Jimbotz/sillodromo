@@ -93,6 +93,12 @@ QPushButton[accion="off"]:focus:hover {
     border-color: #4A0F0F;                  /* OFF_BORDER */
 }
 
+/* Botones "solo asistente" (p. ej. Editar comandos): borde punteado, además del texto "(Solo asistente)".
+   La cruceta, la mirada y la boca no los seleccionan; solo funcionan con ratón y teclado. */
+QPushButton[soloAsistente="true"] {
+    border-style: dashed;
+}
+
 /* ---------- Bloque seleccionado (cruceta o mirada): el bloque "se ilumina" ----------
    Pasa de claro a azul oscuro, con texto blanco (8,5:1) y borde el doble de grueso: se nota por
    luminosidad y por grosor, no solo por el tono. Va después de :hover para ganarle. */

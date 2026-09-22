@@ -86,13 +86,28 @@ def puntos_calibracion() -> list:
             + [(x, 1 - m) for x in reversed(xs)] + [(m, y) for y in reversed(ys)])
 
 
+# Propiedad Qt de los botones "solo asistente" (p. ej. Editar comandos): funcionan solo con ratón y
+# teclado. La cruceta, la mirada y la boca no los seleccionan ni los pulsan, así la persona en la
+# silla no entra sin querer a lo que es de quien acompaña. Se ven con borde punteado (styles.qss).
+SOLO_ASISTENTE = "soloAsistente"
+
+
 def bloques_visibles(contenedor: QWidget) -> list:
-    return [b for b in contenedor.findChildren(QPushButton) if b.isVisible() and b.isEnabled()]
+    """Bloques que la cruceta y la mirada pueden seleccionar (los "solo asistente" quedan fuera)."""
+    return [b for b in contenedor.findChildren(QPushButton)
+            if b.isVisible() and b.isEnabled() and not b.property(SOLO_ASISTENTE)]
 
 
 def primer_bloque(contenedor: QWidget) -> QPushButton:
-    """Primer botón visible dentro del contenedor (orden de creación), o None si no hay."""
-    return next((b for b in contenedor.findChildren(QPushButton) if b.isVisible()), None)
+    """Primer botón visible dentro del contenedor (orden de creación), o None si no hay.
+    Nunca uno "solo asistente": al entrar a una vista no debe quedar seleccionado."""
+    return next((b for b in contenedor.findChildren(QPushButton)
+                 if b.isVisible() and not b.property(SOLO_ASISTENTE)), None)
+
+
+def solo_asistente(boton: QPushButton) -> QPushButton:
+    boton.setProperty(SOLO_ASISTENTE, True)
+    return boton
 
 
 def boton_volver(ventana, parent) -> QPushButton:
