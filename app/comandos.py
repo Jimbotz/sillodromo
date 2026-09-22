@@ -4,11 +4,16 @@ Se crean y editan desde la app (editor.py); este módulo solo lee, valida y guar
 
     {"categorias": [
       {"nombre": "Solicitar atención", "icono": "hand",
-       "comandos": [{"titulo": "Ir al baño", "frase": "Por favor, llévenme al baño", "icono": "toilet"}]}
+       "comandos": [{"titulo": "Ir al baño", "frase": "Por favor, llévenme al baño", "icono": "toilet",
+                     "accion": ""}]}
     ]}
 
 La frase es exactamente lo que dice la voz. Si empieza por "Alexa", voz.hablar hace la pausa de 1 s
 tras "Alexa" para que el altavoz se active (lo que haga la orden se configura en las Rutinas de Alexa).
+
+"accion" es "on", "off" o "" (por defecto, también para comandos guardados antes de que existiera este
+campo): colorea el bloque de verde o rojo además de su texto e icono (ver main.crear_vista y
+main.clasificar_accion, que además intenta adivinarla del título cuando queda vacía).
 """
 
 import json
@@ -52,6 +57,10 @@ def _icono(valor, disponibles) -> str:
     return valor if valor in disponibles else icono.POR_DEFECTO
 
 
+def _accion(valor) -> str:
+    return valor if valor in ("on", "off") else ""
+
+
 def validar(datos) -> tuple:
     """(categorias limpias, cuántos elementos se descartaron). Acepta también el formato antiguo:
     una lista de {"texto", "frase"}, que pasa a una categoría "Comandos"."""
@@ -73,7 +82,8 @@ def validar(datos) -> tuple:
             if not titulo or frase in ("", "Alexa, "):
                 descartados += 1
                 continue
-            comandos.append({"titulo": titulo, "frase": frase, "icono": _icono(d.get("icono"), disponibles)})
+            comandos.append({"titulo": titulo, "frase": frase, "icono": _icono(d.get("icono"), disponibles),
+                             "accion": _accion(d.get("accion"))})
         categorias.append({"nombre": nombre, "icono": _icono(c.get("icono"), disponibles), "comandos": comandos})
     return categorias, descartados
 
@@ -123,24 +133,27 @@ if __name__ == "__main__":
         ruta = os.path.join(carpeta, "datos", "comandos.json")
         categorias, aviso = cargar(ruta)  # no existe: se crea con el ejemplo
         assert os.path.exists(ruta) and aviso == "" and [c["nombre"] for c in categorias] == ["Solicitar atención", "Casa"]
-        assert categorias[0]["comandos"][0] == {"titulo": "Ir al baño", "frase": "Por favor, llévenme al baño", "icono": "toilet"}
+        assert categorias[0]["comandos"][0] == {"titulo": "Ir al baño", "frase": "Por favor, llévenme al baño",
+                                                 "icono": "toilet", "accion": ""}  # sin accion: "" por defecto
 
-        categorias[0]["comandos"].append({"titulo": "Llamar a mamá", "frase": "Quiero hablar con mi mamá", "icono": "phone"})
-        assert guardar(categorias, ruta) and cargar(ruta)[0] == categorias  # ida y vuelta
+        categorias[0]["comandos"].append({"titulo": "Encender la luz del pasillo", "frase": "Alexa, enciende el pasillo",
+                                          "icono": "phone", "accion": "on"})
+        assert guardar(categorias, ruta) and cargar(ruta)[0] == categorias  # ida y vuelta, con accion incluida
 
         with open(ruta, "w", encoding="utf-8") as f:  # formato antiguo: lista suelta
             json.dump([{"texto": "Buenas noches", "frase": "alexa buenas noches"}, {"texto": "Sin frase"}], f)
         categorias, aviso = cargar(ruta)
         assert categorias == [{"nombre": "Comandos", "icono": icono.POR_DEFECTO,
-                               "comandos": [{"titulo": "Buenas noches", "frase": "Alexa, buenas noches", "icono": icono.POR_DEFECTO}]}]
+                               "comandos": [{"titulo": "Buenas noches", "frase": "Alexa, buenas noches",
+                                             "icono": icono.POR_DEFECTO, "accion": ""}]}]
         assert "Se ignoraron 1" in aviso
 
-        with open(ruta, "w", encoding="utf-8") as f:  # nombres vacíos, icono inexistente, basura
+        with open(ruta, "w", encoding="utf-8") as f:  # nombres vacíos, icono inexistente, basura, accion inválida
             json.dump({"categorias": [{"nombre": " "}, "x", {"nombre": "A", "icono": "no-existe",
-                                                               "comandos": [{"titulo": "T", "frase": "Hola", "icono": "nada"}, 5]}]}, f)
+                                       "comandos": [{"titulo": "T", "frase": "Hola", "icono": "nada", "accion": "verde"}, 5]}]}, f)
         categorias, aviso = cargar(ruta)
         assert categorias == [{"nombre": "A", "icono": icono.POR_DEFECTO,
-                               "comandos": [{"titulo": "T", "frase": "Hola", "icono": icono.POR_DEFECTO}]}]
+                               "comandos": [{"titulo": "T", "frase": "Hola", "icono": icono.POR_DEFECTO, "accion": ""}]}]
         assert "Se ignoraron 3" in aviso
 
         with open(ruta, "w", encoding="utf-8") as f:

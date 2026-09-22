@@ -40,6 +40,18 @@ class AccessibleColors:
     SELECTED_BORDER = "#0A2657"  # borde grueso; también contorno de la flecha y del puntero
     SELECTED_TEXT = "#FFFFFF"  # única excepción al "sin blanco puro": texto sobre azul oscuro
 
+    # Semántico: bloques de "encender" (verde) y "apagar" (rojo). Es un apoyo extra, nunca el único
+    # aviso: el texto ("Encender"/"Apagar") y el icono (power/power-off) ya lo dicen, así que sigue
+    # sirviendo igual para daltonismo rojo-verde (deuteranopía/protanopía). Ver main.clasificar_accion.
+    BG_ON = "#CFE3D3"
+    BG_ON_HOVER = "#C3D9CC"
+    ON = "#1B5E33"  # relleno cuando el bloque de encender está seleccionado
+    ON_BORDER = "#0F3A1F"
+    BG_OFF = "#E9CFCF"
+    BG_OFF_HOVER = "#DDC5C8"
+    OFF = "#7A1B1B"  # relleno cuando el bloque de apagar está seleccionado
+    OFF_BORDER = "#4A0F0F"
+
 
 # Pares que aparecen en la interfaz: (qué es, primer plano, fondo, contraste mínimo)
 C = AccessibleColors
@@ -66,6 +78,14 @@ PARES = [
     ("contorno del puntero sobre el fondo", C.SELECTED_BORDER, C.BG_WINDOW, 3),
     ("contorno claro del puntero sobre el bloque seleccionado", C.BG_SURFACE, C.SELECTED, 3),
     ("progreso de calibración sobre su barra", C.SELECTED, C.BG_GUIDE, 3),
+    ("texto sobre bloque de encender", C.TEXT_PRIMARY, C.BG_ON, 7),
+    ("texto sobre bloque de encender con ratón", C.TEXT_PRIMARY, C.BG_ON_HOVER, 7),
+    ("texto del bloque de encender seleccionado", C.SELECTED_TEXT, C.ON, 7),
+    ("bloque de encender seleccionado frente al fondo", C.ON, C.BG_WINDOW, 3),
+    ("texto sobre bloque de apagar", C.TEXT_PRIMARY, C.BG_OFF, 7),
+    ("texto sobre bloque de apagar con ratón", C.TEXT_PRIMARY, C.BG_OFF_HOVER, 7),
+    ("texto del bloque de apagar seleccionado", C.SELECTED_TEXT, C.OFF, 7),
+    ("bloque de apagar seleccionado frente al fondo", C.OFF, C.BG_WINDOW, 3),
 ]
 
 

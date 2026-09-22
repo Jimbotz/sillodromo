@@ -4,6 +4,39 @@ Aplicación de escritorio desarrollada en **Python** con **PyQt5**, totalmente c
 
 ---
 
+## Puesta en Marcha Rápida
+
+La cámara es la que hace la detección de cabeza y mirada, así que en **Windows y macOS conviene correr la app nativa** (Docker Desktop en esos dos sistemas no puede pasarle la webcam al contenedor; ver [Cámara](#cámara)). Docker con cámara real solo funciona en hosts Linux.
+
+**Windows (PowerShell):**
+```powershell
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python.exe app\main.py
+```
+
+**macOS / Linux:**
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python app/main.py
+```
+
+Si el equipo tiene más de una cámara conectada (por ejemplo la integrada del portátil y una externa), la app prueba los índices de OpenCV en orden y puede quedarse con la que no querés. Fija el índice correcto con la variable `SILLODROMO_CAMARA`:
+
+```powershell
+$env:SILLODROMO_CAMARA="1"; .venv\Scripts\python.exe app\main.py   # PowerShell
+```
+```bash
+SILLODROMO_CAMARA=1 .venv/bin/python app/main.py                  # bash/zsh
+```
+
+Para saber qué índice es cuál, un truco simple: pedí 1920×1080 con `cv2.VideoCapture(i)` en cada índice y mirá cuál lo negocia de verdad (una cámara HD real lo hace, una integrada de gama baja se queda en 1280×720 aunque se lo pidas).
+
+Raspberry Pi / Linux arm64, Docker y la guía completa de X11 Forwarding: ver más abajo.
+
+---
+
 ## Criterios de Diseño Accesible y Sistema de Color
 
 Tema claro en blancos y azules. Los colores están en `app/palette.py`, y `python app/palette.py` comprueba el contraste de cada par que aparece en la interfaz.

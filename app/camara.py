@@ -28,6 +28,9 @@ MODELO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos", "fa
 # la 1.0.1 aborta allí con CPU, y con GPU retiene una copia de cada cuadro (~100 MB/s).
 
 MAX_CAMARAS = 4  # índices de OpenCV que se prueban al buscar una cámara
+# Con varias cámaras conectadas (p. ej. la integrada del portátil y una externa), fija cuál usar
+# sin depender de qué índice pruebe primero: SILLODROMO_CAMARA=1 python app/main.py
+CAMARA_FORZADA = os.environ.get("SILLODROMO_CAMARA")
 MENSAJE_SIN_CAMARA = "No se pudo abrir ninguna cámara."
 if sys.platform == "darwin":
     # macOS atribuye el permiso a la app que lanza el proceso (Terminal, VS Code...), no a Python
@@ -492,7 +495,8 @@ class HiloCamara(QThread):
         # Se abre en el hilo principal: en macOS OpenCV solo puede pedir el permiso de cámara desde ahí.
         # Se prueban los primeros índices hasta dar con una cámara que entregue imagen.
         self.cap, self.indice = None, None
-        for i in range(MAX_CAMARAS):
+        indices = [int(CAMARA_FORZADA)] if CAMARA_FORZADA is not None else range(MAX_CAMARAS)
+        for i in indices:
             cap = cv2.VideoCapture(i)
             if cap.isOpened() and cap.read()[0]:
                 self.cap, self.indice = cap, i

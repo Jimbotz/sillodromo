@@ -14,6 +14,7 @@ Funciona en Windows, macOS y Linux (nativo o en Docker vía X11).
 
 import math
 import os
+import re
 import sys
 import time
 from collections import deque
@@ -58,6 +59,58 @@ ICONOS_GENERO = {"cumbia": "drum", "salsa": "music-2", "reguetón": "disc-3", "r
                  "banda": "music-3", "corridos": "music-4", "pop": "mic-vocal", "jazz": "piano"}
 ICONOS_DISPOSITIVO = {"Focos": "lightbulb", "Televisiones": "tv", "Enchufes": "plug", "Música": "music",
                       "Comandos": "message-square-text"}
+
+# Escala de pantalla: styles.qss, los iconos y el espaciado de la rejilla están pensados para una
+# pantalla de ANCHO_DISENO x ALTO_DISENO. En una más chica (o con más escala de Windows, que reduce
+# la resolución lógica) todo se achica en la misma proporción para que ningún texto ni columna se
+# corte; en una más grande, crece igual de proporcionado. establecer_escala() la fija en main(),
+# antes de armar la ventana.
+ANCHO_DISENO, ALTO_DISENO = 1920, 1080
+ESCALA = 1.0
+# TAMANO_ICONO y TAMANO_ICONO_VOLVER ya importados de icono.py (44 y 30): esos son los valores para
+# ESCALA = 1.0; establecer_escala() los reemplaza por la versión escalada.
+ESPACIADO, MARGEN_VISTA = 14, 16
+
+
+def establecer_escala(factor: float):
+    global ESCALA, TAMANO_ICONO, TAMANO_ICONO_VOLVER, ESPACIADO, MARGEN_VISTA
+    ESCALA = max(0.55, min(1.3, factor))  # ni tan chico que no se lea, ni tan grande que rompa la rejilla
+    TAMANO_ICONO, TAMANO_ICONO_VOLVER = round(44 * ESCALA), round(30 * ESCALA)
+    ESPACIADO, MARGEN_VISTA = round(14 * ESCALA), round(16 * ESCALA)
+
+
+def escalar_qss(texto: str, factor: float) -> str:
+    """Multiplica cada valor en píxeles de la hoja de estilos por factor, sin llegar a 0."""
+    return re.sub(r"(\d+)px", lambda m: f"{max(1, round(int(m.group(1)) * factor))}px", texto)
+
+
+assert escalar_qss("a { font-size: 10px; }", 0.5) == "a { font-size: 5px; }"
+assert escalar_qss("border: 2px solid", 3) == "border: 6px solid"
+assert escalar_qss("x: 1px", 0.01) == "x: 1px"  # nunca desaparece del todo
+
+
+# Colores de "encender"/"apagar" (ver styles.qss y palette.AccessibleColors): un apoyo extra además
+# del texto y el icono, nunca el único aviso, así que sigue sirviendo igual para daltonismo rojo-verde.
+# Solo la primera palabra del bloque cuenta, para no colorear "Subir volumen" ni "Detener" a medias.
+_PALABRAS_ON = {"encender", "prender", "activar", "poner"}
+_PALABRAS_OFF = {"apagar", "detener", "desactivar"}
+
+
+def clasificar_accion(texto: str) -> str:
+    """"on" (verde), "off" (rojo) o "" (sin color) según la primera palabra del texto del bloque."""
+    primera = texto.strip().split()[0].casefold() if texto.strip() else ""
+    if primera in _PALABRAS_ON:
+        return "on"
+    if primera in _PALABRAS_OFF:
+        return "off"
+    return ""
+
+
+assert clasificar_accion("Encender foco 1") == "on"
+assert clasificar_accion("Apagar") == "off"
+assert clasificar_accion("Poner música") == "on"
+assert clasificar_accion("Detener música") == "off"
+assert clasificar_accion("Subir 10 %") == clasificar_accion("YouTube") == clasificar_accion("") == ""
 
 
 def unidades(nombre: str, acciones: list) -> list:
@@ -175,23 +228,27 @@ def crear_vista(titulo: str, filas: list, nota: str = "") -> QWidget:
     filas: (etiqueta o None, [(texto, frase o función, icono), ...]). nota: texto pequeño al pie."""
     vista = QWidget()
     layout = QVBoxLayout(vista)
-    layout.setContentsMargins(0, 16, 0, 16)
-    layout.setSpacing(14)
+    layout.setContentsMargins(0, MARGEN_VISTA, 0, MARGEN_VISTA)
+    layout.setSpacing(ESPACIADO)
 
     encabezado = QLabel(titulo, vista)
     encabezado.setObjectName("tituloVista")
     layout.addWidget(encabezado)
 
     rejilla = QGridLayout()
-    rejilla.setSpacing(14)
+    rejilla.setSpacing(ESPACIADO)
     con_etiquetas = int(any(etiqueta for etiqueta, _ in filas))  # la columna 0 es para "Televisión 1"...
     for f, (etiqueta, bloques) in enumerate(filas):
         if etiqueta:
             nombre_fila = QLabel(etiqueta, vista)
             nombre_fila.setObjectName("etiquetaFila")
             rejilla.addWidget(nombre_fila, f, 0)
-        for c, (texto, frase, nombre_icono) in enumerate(bloques):
-            boton = con_icono(_llenar(QPushButton(texto, vista)), nombre_icono)
+        for c, bloque in enumerate(bloques):
+            texto, frase, nombre_icono = bloque[:3]
+            accion = (bloque[3] if len(bloque) > 3 else "") or clasificar_accion(texto)
+            boton = con_icono(_llenar(QPushButton(texto, vista)), nombre_icono, TAMANO_ICONO)
+            if accion:
+                boton.setProperty("accion", accion)
             boton.setAccessibleName(f"{titulo}, {etiqueta}: {texto}" if etiqueta else f"{titulo}, {texto}")
             # frase: lo que dice la voz; o una función (p. ej. abrir una categoría de comandos)
             boton.clicked.connect(frase if callable(frase) else (lambda _, fr=frase: voz.hablar(fr)))
@@ -372,6 +429,9 @@ class VentanaPrincipal(QMainWindow):
         self.editor.cambiado.connect(self._reconstruir_comandos)
         self.editor.cerrar.connect(self._cerrar_editor)
         self.vistas.addWidget(self.editor)
+        # La lista debe existir antes de conectar: setCurrentIndex(3) de la calibración
+        # dispara _al_cambiar_vista antes de crear los atajos
+        self.atajos_flechas = []
         self.vistas.currentChanged.connect(self._al_cambiar_vista)
         self.setCentralWidget(self.vistas)
         self.capa = CapaMirada(self)  # encima de todo; se ajusta en resizeEvent
@@ -621,7 +681,7 @@ class VentanaPrincipal(QMainWindow):
         for c in categorias:
             vacia = "Aún no hay comandos en esta categoría." if not c["comandos"] else ""
             self.pila_comandos.addWidget(crear_vista(c["nombre"], filas(
-                [(d["titulo"], d["frase"], d["icono"]) for d in c["comandos"]]), vacia))
+                [(d["titulo"], d["frase"], d["icono"], d.get("accion", "")) for d in c["comandos"]]), vacia))
         self.volver_comandos.setText("Volver a dispositivos")
 
     def _abrir_categoria(self, k: int):
@@ -960,9 +1020,12 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Sillódromo")
 
+    pantalla = app.primaryScreen().availableGeometry()
+    establecer_escala(min(pantalla.width() / ANCHO_DISENO, pantalla.height() / ALTO_DISENO))
+
     qss_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "styles.qss")
     with open(qss_path, encoding="utf-8") as f:
-        app.setStyleSheet(f.read())
+        app.setStyleSheet(escalar_qss(f.read(), ESCALA))
 
     ventana = VentanaPrincipal()
     ventana.showFullScreen()

@@ -26,6 +26,9 @@ import comandos
 import icono
 import voz
 
+# Mostrado en el selector de color de DialogoComando: (etiqueta, valor guardado en "accion")
+OPCIONES_ACCION = [("Sin color", ""), ("Encender (verde)", "on"), ("Apagar (rojo)", "off")]
+
 
 def _boton(texto: str, nombre_icono: str, parent=None) -> QPushButton:
     """Botón de tamaño normal (no bloque), con icono."""
@@ -155,6 +158,9 @@ class DialogoComando(Dialogo):
         self.categoria = QComboBox(self)
         for c in categorias:
             self.categoria.addItem(icono.icono(c["icono"], aire=False), c["nombre"])
+        self.accion = QComboBox(self)
+        for etiqueta, _valor in OPCIONES_ACCION:
+            self.accion.addItem(etiqueta)
         probar = _boton("Probar voz", "play", self)
         probar.clicked.connect(lambda: voz.hablar(comandos.normalizar_frase(self.frase.text())))
         fila_frase = QHBoxLayout()
@@ -166,6 +172,8 @@ class DialogoComando(Dialogo):
         self.layout_.addLayout(fila_frase)
         self.layout_.addWidget(_campo("Categoría:", self.categoria, self))
         self.layout_.addWidget(self.categoria)
+        self.layout_.addWidget(_campo("Color del bloque:", self.accion, self))
+        self.layout_.addWidget(self.accion)
         nota = QLabel("Si la frase empieza por «Alexa», la voz hace una pausa de 1 s tras «Alexa» para que el "
                       "altavoz la escuche. Si es para una persona, escríbela tal cual.", self)
         nota.setObjectName("ayudaCalibracion")
@@ -173,6 +181,8 @@ class DialogoComando(Dialogo):
         self.layout_.addWidget(nota)
         self.terminar()
         self.categoria.setCurrentIndex(i_categoria)
+        valores_accion = [valor for _etiqueta, valor in OPCIONES_ACCION]
+        self.accion.setCurrentIndex(valores_accion.index(comando.get("accion", "")) if comando else 0)
         if comando:
             self.titulo.setText(comando["titulo"])
             self.frase.setText(comando["frase"])
@@ -193,7 +203,8 @@ class DialogoComando(Dialogo):
 
     def valores(self) -> tuple:
         comando = {"titulo": " ".join(self.titulo.text().split()),
-                   "frase": comandos.normalizar_frase(self.frase.text()), "icono": self.icono.seleccionado()}
+                   "frase": comandos.normalizar_frase(self.frase.text()), "icono": self.icono.seleccionado(),
+                   "accion": OPCIONES_ACCION[self.accion.currentIndex()][1]}
         return self.categoria.currentIndex(), comando
 
 
