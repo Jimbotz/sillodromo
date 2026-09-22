@@ -19,6 +19,7 @@ from collections import deque
 
 from PyQt5.QtCore import QPoint, QRect, Qt, QTimer
 from PyQt5.QtGui import QImage, QKeySequence
+from PyQt5 import sip
 from PyQt5.QtWidgets import QMainWindow, QScrollArea, QShortcut, QStackedWidget
 
 from features import voice as voz
@@ -53,6 +54,12 @@ ERROR_MAXIMO = 0.15  # si la calibración de pantalla falla por más que esto, s
 # más que DISPERSION_MAXIMA (fracción de pantalla), la mirada se está desviando y la carga se pausa
 VENTANA_FIJACION = 0.3
 DISPERSION_MAXIMA = 0.05
+
+
+def _vivo(widget) -> bool:
+    """True si el widget existe todavía. Qt puede borrar un botón (p. ej. al redibujar los Comandos)
+    mientras Python aún lo guarda; usarlo después lanza RuntimeError."""
+    return widget is not None and not sip.isdeleted(widget)
 
 
 class VentanaPrincipal(QMainWindow):
@@ -246,7 +253,7 @@ class VentanaPrincipal(QMainWindow):
         if bloquear:
             self.foco_previo = self.focusWidget()
         self.vistas.setEnabled(not bloquear)
-        if not bloquear and self.foco_previo is not None and self.foco_previo.isVisible():
+        if not bloquear and _vivo(self.foco_previo) and self.foco_previo.isVisible():
             self.foco_previo.setFocus()  # al terminar, la selección vuelve donde estaba
         self.capa.aviso = "Espera a que termine la acción" if bloquear else ""
         self.capa.update()
@@ -358,8 +365,11 @@ class VentanaPrincipal(QMainWindow):
                 bajo = None  # recién activado: hasta que la mirada se mueva, no cuenta nada
             else:
                 self.ancla = None
-        if self.permanencia.bloque is not None and not self.permanencia.bloque.isVisible():
-            self.permanencia = Permanencia()  # la pantalla cambió: el bloque anterior ya no está
+        anterior = self.permanencia.bloque
+        if anterior is not None and (not _vivo(anterior) or not anterior.isVisible()):
+            # la pantalla cambió: el bloque anterior ya no se ve o ya no existe (p. ej. el editor
+            # redibujó los bloques de Comandos y borró los viejos)
+            self.permanencia = Permanencia()
         activar = self.permanencia.actualizar(bajo, dt, cargar=quieta)  # si la mirada se desvía, no carga
         bloque = self.permanencia.bloque  # con la gracia, puede seguir siendo el anterior un instante
         if bloque is not None and bloque is not self.focusWidget():

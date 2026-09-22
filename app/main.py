@@ -6,6 +6,7 @@ Funciona en Windows, macOS y Linux (nativo o en Docker vía X11).
 
 import os
 import sys
+import traceback
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
@@ -14,7 +15,15 @@ from tools import scale
 from window import VentanaPrincipal
 
 
+def _informar_error(tipo, valor, rastro):
+    """Red de seguridad: sin esto, PyQt5 cierra toda la app ante cualquier error dentro de una señal de
+    Qt. Para quien depende de la app para moverse, es peor quedarse sin ella que un fallo puntual:
+    el error se escribe en la terminal (para arreglarlo) y la app sigue."""
+    traceback.print_exception(tipo, valor, rastro)
+
+
 def main():
+    sys.excepthook = _informar_error
     # Atributos High-DPI: deben fijarse antes de crear QApplication
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
