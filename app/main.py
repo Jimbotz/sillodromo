@@ -112,6 +112,7 @@ ERROR_MAXIMO = 0.15  # si la calibración de pantalla falla por más que esto, s
 # más que DISPERSION_MAXIMA (fracción de pantalla), la mirada se está desviando y la carga se pausa
 VENTANA_FIJACION = 0.3
 DISPERSION_MAXIMA = 0.05
+VISTA_NAVEGACION = 1  # la cabeza conduce: girar no selecciona nada y abrir la boca vuelve al menú
 VISTA_EDITOR = 6  # editor de comandos: sin mirada ni cruceta
 VISTAS_NORMALES = (0, 1, 2, 5)  # menú, navegación, activadores y confirmación (no las de calibración)
 # Nombre de cada punto de calibración, en el mismo orden que puntos_calibracion(): se muestra y se
@@ -427,7 +428,7 @@ class VentanaPrincipal(QMainWindow):
         # cruceta pulsan nada (con "Borrar" a la vista, un gesto sin querer perdería datos)
         for atajo in self.atajos_flechas:
             atajo.setEnabled(indice != VISTA_EDITOR)
-        if indice == VISTA_EDITOR:
+        if indice in (VISTA_EDITOR, VISTA_NAVEGACION):  # sin puntero ni barra de carga
             self.capa.mostrar(None, None, 0.0)
 
     def _gesto(self, gesto: str):
@@ -562,9 +563,15 @@ class VentanaPrincipal(QMainWindow):
         self.lbl_direccion.setAlignment(Qt.AlignCenter)
         self.lbl_direccion.setWordWrap(True)
 
+        # Aquí girar la cabeza solo mueve la flecha: la única salida con la cara es abrir la boca
+        salida = QLabel("Abre la boca para volver al menú", vista)
+        salida.setObjectName("tituloTarjeta")
+        salida.setAlignment(Qt.AlignCenter)
+
         layout.addLayout(fila)
         layout.addWidget(self.camara_navegacion, 1)
         layout.addWidget(self.lbl_direccion)
+        layout.addWidget(salida)
         return vista
 
     def _crear_activadores(self) -> QWidget:
@@ -830,9 +837,21 @@ class VentanaPrincipal(QMainWindow):
         self.vista_puntos.mostrar(self.puntos[self.i_punto], max(0.0, self.t_punto - ASENTAR) / MUESTREO)
 
     def _gesto_cabeza(self, gesto: str):
+        if self.vistas.currentIndex() == VISTA_NAVEGACION:
+            # En Navegación la cabeza conduce: girar no mueve la selección, así no se sale sin querer.
+            # La única salida con la cara es abrir la boca, que vuelve al menú.
+            if gesto == "pulsar":
+                self._salir_de_navegacion()
+            return
         # Con el puntero de la mirada, girar la cabeza mueve el puntero: solo cuenta "pulsar" (boca)
         if self.modelo_mirada is None or gesto == "pulsar":
             self._gesto(gesto)
+
+    def _salir_de_navegacion(self):
+        self._ir_a(0)
+        if self.permanencia is not None:
+            self.permanencia = Permanencia()
+        self.ancla = self.mirada  # en el menú, la mirada no activa nada hasta moverse (ver REARME)
 
     def _rasgos(self, rasgos):
         # Solo llegan cuadros con cara: sin cara, el tiempo de calibración y de permanencia no corre
@@ -877,10 +896,11 @@ class VentanaPrincipal(QMainWindow):
         self._tras_hablar(espera, lambda: self.vistas.currentIndex() == 4 and self._ir_a(0))
 
     def _mover_puntero(self, rasgos, dt: float):
-        if self.vistas.currentIndex() == VISTA_EDITOR:
-            return  # ver _al_cambiar_vista
-        # Filtro 1€: quita el temblor con la mirada quieta sin retrasar los saltos (camara.FiltroUnEuro)
+        # Filtro 1€: quita el temblor con la mirada quieta sin retrasar los saltos (camara.FiltroUnEuro).
+        # Se sigue actualizando en todas las vistas, para saber dónde mira al volver al menú.
         self.mirada = self.filtro(self.modelo_mirada.predecir(rasgos), dt)
+        if self.vistas.currentIndex() in (VISTA_EDITOR, VISTA_NAVEGACION):
+            return  # la mirada no selecciona nada aquí (ver _al_cambiar_vista y _gesto_cabeza)
         punto = QPoint(int(self.mirada[0] * self.width()), int(self.mirada[1] * self.height()))
         global_ = self.mapToGlobal(punto)
         # La mirada está quieta si el puntero casi no se movió en la última VENTANA_FIJACION

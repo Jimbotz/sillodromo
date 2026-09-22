@@ -123,6 +123,8 @@ docker compose up --build
 
 La app se maneja por bloques. Girar la cabeza (izquierda, derecha, arriba o abajo) mueve la selección al bloque vecino, que se ilumina (azul oscuro con borde grueso). Cada giro cuenta una sola vez: hay que volver al centro antes del siguiente. **Abrir la boca** pulsa el bloque seleccionado. Los ojos no se usan.
 
+**En la vista Navegación la cabeza conduce:** girar solo mueve la flecha, y ni la cabeza ni la mirada seleccionan bloques, así no se sale de la vista sin querer. **Abrir la boca vuelve al menú.** Al llegar al menú, la mirada no activa nada hasta que se mueva.
+
 Las perillas de calibración (`UMBRAL_GIRO`, `BOCA_ABIERTA`, `BOCA_CERRADA`, `CUADROS_ESTABLES`) están en `app/camara.py`.
 
 ## Calibración inicial
